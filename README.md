@@ -93,8 +93,12 @@ make watch
 - `playwright` Chromium (`npx playwright install chromium`)
 - `sharp` (npm 의존성에 포함)
 
-## 라이선스 / 연락
+## 라이선스
 
-발표 자료 본문은 청중 학습용으로 자유롭게 인용·재배포하실 수 있습니다. 인용한 AWS 공식 문서·블로그·GitHub 코드의 권리는 각 권리자에게 있습니다.
+본 저장소의 발표 콘텐츠(슬라이드·다이어그램·리서치·레퍼런스)는 [**CC BY 4.0**](https://creativecommons.org/licenses/by/4.0/)으로 배포됩니다 — 출처를 표시하시면 자유롭게 공유·각색·재배포 가능합니다. 자세한 내용은 [`LICENSE`](LICENSE) 참고.
 
-질문/오류 신고: GitHub Issues 또는 발표 후 직접 문의해 주세요.
+인용된 AWS 공식 문서, 블로그, GitHub 코드의 권리는 각 권리자에게 있으며, 모든 인용에 출처 URL이 명시되어 있습니다.
+
+## 연락
+
+질문 / 오류 신고: GitHub Issues 또는 발표 후 직접 문의해 주세요.
