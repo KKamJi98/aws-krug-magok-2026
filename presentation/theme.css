@@ -1,0 +1,421 @@
+/*
+ * Marp theme for aws-krug-2026 presentation.
+ * Layout: header at top, body centered between header and refs, refs absolute at bottom.
+ */
+
+/* @theme aws-krug */
+
+@import 'default';
+
+:root {
+  --bg: #0f172a;          /* slate-900 */
+  --fg: #f1f5f9;          /* slate-100 (high contrast) */
+  --muted: #94a3b8;       /* slate-400 */
+  --muted-strong: #475569;/* slate-600 */
+  --accent: #f59e0b;      /* amber-500 */
+  --accent-soft: #fbbf24; /* amber-400 */
+  --code-bg: #020617;     /* slate-950 (deeper than section bg) */
+  --code-fg: #fde68a;     /* amber-200 (high contrast on dark) */
+  --link: #38bdf8;        /* sky-400 */
+}
+
+/* ── Slide canvas ─────────────────────────────────────── */
+/* Strategy: h2 and .refs are absolutely positioned (top / bottom).
+   The remaining body content lives in a flex column with
+   justify-content: center → body centers between h2 and refs. */
+
+section {
+  background: var(--bg);
+  color: var(--fg);
+  font-family: 'Pretendard', 'Apple SD Gothic Neo', 'Noto Sans KR', sans-serif;
+  font-size: 22px;
+  line-height: 1.4;
+  padding: 80px 50px 84px 50px;     /* top reserves h2, bottom reserves refs(38-66) + footer(14-28) clear */
+  display: flex;
+  flex-direction: column;
+  justify-content: center;          /* center body content vertically */
+  position: relative;
+  overflow: hidden;
+}
+
+/* ── Headings (absolute top, consistent across all slides) ── */
+
+h1, h2, h3 {
+  color: var(--accent);
+  font-weight: 700;
+  margin: 0;
+}
+
+h1 { font-size: 48px; }
+h2 {
+  position: absolute;
+  top: 22px;
+  left: 50px;
+  right: 50px;
+  font-size: 30px;
+  border-bottom: 2px solid var(--muted-strong);
+  padding-bottom: 0.18em;
+  margin: 0;
+}
+h3 { font-size: 24px; }
+
+/* ── Body element spacing ─────────────────────────────── */
+
+section > p,
+section > ul,
+section > ol,
+section > pre,
+section > blockquote,
+section > figure,
+section > table {
+  margin-top: 0.2em;
+  margin-bottom: 0.2em;
+}
+
+ul, ol {
+  line-height: 1.4;
+  padding-left: 1.3em;
+}
+
+li {
+  margin-bottom: 0.15em;
+}
+
+li > ul, li > ol {
+  margin-top: 0.1em;
+}
+
+p {
+  line-height: 1.4;
+}
+
+a { color: var(--link); }
+
+/* ── Image centering ──────────────────────────────────── */
+
+section img {
+  display: block;
+  margin: 0.3em auto;
+  max-width: 100%;
+}
+
+section p:has(> img) {
+  text-align: center;
+  margin: 0.3em 0;
+}
+
+/* ── Hide leftover footnote refs Marp might render ────── */
+
+section sup,
+section .footnote-ref,
+section .footnotes {
+  display: none;
+}
+
+/* ── References block (custom <small class="refs">) ──── */
+
+section .refs {
+  position: absolute;
+  bottom: 38px;                    /* was 22px — pushed up so footer(bottom:14) doesn't collide */
+  left: 50px;
+  right: 50px;
+  margin: 0;
+  padding-top: 4px;
+  border-top: 1px solid var(--muted-strong);
+  font-size: 10px;
+  color: var(--muted);
+  line-height: 1.35;
+  word-break: break-all;
+  max-height: 26px;
+  overflow: hidden;
+}
+
+section .refs a {
+  color: var(--muted);
+  text-decoration: none;
+}
+
+/* ── Code (high contrast on dark bg) ──────────────────── */
+
+code {
+  background: var(--code-bg);
+  color: var(--code-fg);
+  padding: 1px 6px;
+  border-radius: 4px;
+  font-size: 0.85em;
+  font-family: 'JetBrains Mono', 'Menlo', 'Monaco', monospace;
+}
+
+pre {
+  background: var(--code-bg);
+  color: var(--fg);
+  border-left: 4px solid var(--accent);
+  padding: 12px 18px;
+  border-radius: 6px;
+  font-size: 0.62em;
+  line-height: 1.5;
+  overflow: auto;
+  margin: 0.4em 0;
+}
+
+pre code {
+  background: transparent;
+  color: var(--fg) !important;
+  padding: 0;
+  font-size: 1em;
+}
+
+/* Override syntax highlighting tokens that may be too dark */
+pre code .hljs-string,
+pre code .hljs-attr,
+pre code .hljs-number {
+  color: var(--code-fg) !important;
+}
+pre code .hljs-keyword,
+pre code .hljs-literal,
+pre code .hljs-built_in {
+  color: var(--link) !important;
+}
+pre code .hljs-comment,
+pre code .hljs-meta {
+  color: var(--muted) !important;
+}
+pre code .hljs-punctuation,
+pre code .hljs-operator {
+  color: var(--fg) !important;
+}
+
+/* ── Tables ───────────────────────────────────────────── */
+
+table {
+  margin: 0.4em auto;
+  border-collapse: collapse;
+  font-size: 0.85em;
+}
+
+th {
+  background: var(--code-bg);
+  color: var(--accent);
+}
+
+th, td {
+  border: 1px solid var(--muted-strong);
+  padding: 6px 10px;
+}
+
+/* ── Blockquote ───────────────────────────────────────── */
+
+blockquote {
+  border-left: 4px solid var(--accent);
+  color: var(--muted);
+  padding: 0.2em 0 0.2em 14px;
+  margin: 0.3em 0;
+  font-style: italic;
+}
+
+/* ── Strong / emphasis ────────────────────────────────── */
+
+strong { color: var(--accent-soft); }
+
+/* ── Footer / page number ─────────────────────────────── */
+
+footer {
+  color: var(--muted);
+  font-size: 11px;
+  bottom: 14px;
+  left: 50px;
+  right: 110px;     /* leave room for page number */
+}
+
+section::after {
+  color: var(--muted);
+  font-size: 11px;
+  bottom: 14px;
+  right: 24px;
+}
+
+/* ── Title / Q&A slide (centered, no h2 border) ──────── */
+
+section.title {
+  justify-content: center;
+  align-items: center;
+  text-align: center;
+  padding: 60px 80px;
+}
+
+section.title h1 {
+  font-size: 56px;
+  margin-bottom: 0.3em;
+  border-bottom: none;
+  padding-bottom: 0;
+  line-height: 1.2;
+}
+
+section.title h2 {
+  border-bottom: none;
+  font-size: 28px;
+  color: var(--muted);
+  padding-bottom: 0;
+}
+
+section.title .subtitle {
+  color: var(--muted);
+  font-size: 24px;
+  margin-top: 0.6em;
+  line-height: 1.7;
+}
+
+section.title .subtitle strong {
+  color: var(--fg);
+  font-size: 1.15em;
+  display: block;
+  margin-bottom: 0.2em;
+}
+
+section.title .subtitle a {
+  color: var(--link);
+  word-break: break-all;
+}
+
+/* Title slide overrides — bypass body-centering helpers */
+section.title > * {
+  margin-top: initial !important;
+  margin-bottom: initial !important;
+}
+
+/* ── TOC slide (larger font for readability from afar) ─ */
+
+section.toc {
+  font-size: 32px;
+}
+
+section.toc ol {
+  line-height: 1.8;
+  padding-left: 1.6em;
+}
+
+section.toc li {
+  margin-bottom: 0.4em;
+}
+
+/* ── Large content slide (text-only slides — bigger font) ─ */
+
+section.large {
+  font-size: 28px;
+  line-height: 1.55;
+}
+
+section.large ul {
+  line-height: 1.55;
+}
+
+section.large li {
+  margin-bottom: 0.45em;
+}
+
+section.large li > ul,
+section.large li > ol {
+  font-size: 0.92em;
+  margin-top: 0.2em;
+}
+
+/* ── Diagram-focus slide (image dominant, tight bullets) ─ */
+
+section.diagram-focus {
+  padding: 70px 40px 80px 40px;
+  justify-content: flex-start;
+  gap: 4px;
+}
+
+section.diagram-focus img {
+  display: block;
+  margin: 0.15em auto 0.2em auto;
+  max-width: 100%;
+}
+
+section.diagram-focus ul {
+  margin-top: 0.35em;
+  margin-bottom: 0;
+  font-size: 18px;
+  line-height: 1.45;
+  padding-left: 1.2em;
+}
+
+section.diagram-focus li {
+  margin-bottom: 0.12em;
+}
+
+/* Visual ARN example block (inline graphic alternative) */
+
+.arn-example {
+  display: block;
+  margin: 0.6em auto;
+  max-width: 92%;
+  background: var(--code-bg);
+  border-left: 4px solid var(--accent);
+  border-radius: 6px;
+  padding: 18px 22px;
+  font-family: 'JetBrains Mono', 'Menlo', 'Monaco', monospace;
+  font-size: 0.78em;
+  line-height: 1.55;
+  color: var(--fg);
+  word-break: break-all;
+}
+
+.arn-example .label {
+  display: block;
+  font-family: 'Pretendard', sans-serif;
+  font-size: 0.78em;
+  color: var(--muted);
+  letter-spacing: 0.4px;
+  margin-bottom: 6px;
+  text-transform: uppercase;
+}
+
+.arn-example .arn {
+  color: var(--fg);
+}
+
+.arn-example .arn .accent {
+  color: var(--accent-soft);
+  font-weight: 700;
+}
+
+.arn-example .arn .cluster-id {
+  color: var(--link);
+  font-weight: 700;
+}
+
+.arn-example .note {
+  display: block;
+  font-family: 'Pretendard', sans-serif;
+  font-size: 0.72em;
+  color: var(--muted);
+  margin-top: 8px;
+}
+
+/* Side-by-side ARN block (blue vs green) */
+
+.arn-pair {
+  display: flex;
+  flex-direction: column;
+  gap: 14px;
+  margin: 0.6em auto;
+  max-width: 94%;
+}
+
+.arn-pair .arn-example {
+  margin: 0;
+  max-width: 100%;
+}
+
+.arn-pair .blue { border-left-color: var(--link); }
+.arn-pair .green { border-left-color: #34d399; /* emerald-400 */ }
+
+.arn-pair .blue .label,
+.arn-pair .green .label {
+  color: var(--muted);
+}
+
+.arn-pair .blue .arn .cluster-id { color: var(--link); }
+.arn-pair .green .arn .cluster-id { color: #34d399; }

@@ -1,0 +1,312 @@
+<!doctype html>
+<html lang="ko">
+<head>
+<meta charset="utf-8" />
+<title>02 — IRSA Token Exchange Flow</title>
+<style>
+  :root {
+    --bg: #0f172a;
+    --fg: #e2e8f0;
+    --muted: #94a3b8;
+    --accent: #f59e0b;
+    --accent-soft: #fbbf24;
+    --code-bg: #1e293b;
+    --link: #38bdf8;
+    --box-bg: #1e293b;
+    --box-border: #334155;
+    --lane-bg: rgba(30, 41, 59, 0.45);
+    --lane-border: #334155;
+    --highlight-bg: #2a2118;
+  }
+  html, body {
+    margin: 0;
+    padding: 0;
+    width: 1920px;
+    height: 1080px;
+    background: var(--bg);
+    color: var(--fg);
+    font-family: 'Pretendard', 'Apple SD Gothic Neo', 'Noto Sans KR', sans-serif;
+  }
+  body {
+    display: flex;
+    align-items: stretch;
+    justify-content: stretch;
+  }
+
+  .stage {
+    flex: 1 1 auto;
+    box-sizing: border-box;
+    padding: 56px 72px;
+    display: flex;
+    flex-direction: column;
+    gap: 28px;
+  }
+
+  /* Lane headers row */
+  .lanes-header {
+    display: grid;
+    grid-template-columns: 1fr 1fr 1fr;
+    gap: 32px;
+    flex: 0 0 auto;
+  }
+  .lane-title {
+    background: var(--code-bg);
+    border: 1px solid var(--box-border);
+    border-radius: 12px;
+    padding: 16px 24px;
+    text-align: center;
+  }
+  .lane-title .actor {
+    font-size: 28px;
+    font-weight: 700;
+    color: var(--fg);
+    letter-spacing: -0.3px;
+  }
+  .lane-title .actor-sub {
+    display: block;
+    margin-top: 6px;
+    font-size: 15px;
+    color: var(--muted);
+    font-family: 'JetBrains Mono', 'SF Mono', Menlo, monospace;
+    font-weight: 500;
+  }
+  .lane-title.pod   { border-color: #475569; }
+  .lane-title.eks   { border-color: #475569; }
+  .lane-title.sts   { border-color: var(--accent); }
+  .lane-title.sts .actor { color: var(--accent-soft); }
+
+  /* Sequence body */
+  .body-grid {
+    flex: 1 1 auto;
+    display: flex;
+    flex-direction: column;
+    gap: 14px;
+    padding: 24px 8px;
+    background: var(--lane-bg);
+    border: 1px dashed var(--lane-border);
+    border-radius: 14px;
+    position: relative;
+  }
+  /* vertical lane separators */
+  .body-grid::before, .body-grid::after {
+    content: "";
+    position: absolute;
+    top: 18px;
+    bottom: 18px;
+    width: 0;
+    border-left: 1px dashed #334155;
+  }
+  .body-grid::before { left: 33.333%; }
+  .body-grid::after  { left: 66.666%; }
+
+  .row {
+    display: grid;
+    grid-template-columns: 1fr 1fr 1fr;
+    gap: 0 32px;
+    align-items: center;
+    flex: 1 1 0;
+    min-height: 0;
+  }
+  .row > .step { align-self: center; }
+  .col-pod { grid-column: 1; }
+  .col-eks { grid-column: 2; }
+  .col-sts { grid-column: 3; }
+  .span-pod-eks { grid-column: 1 / span 2; }
+  .span-eks-sts { grid-column: 2 / span 2; }
+  .span-pod-sts { grid-column: 1 / span 3; }
+
+  .step {
+    background: var(--box-bg);
+    border: 2px solid var(--box-border);
+    border-radius: 12px;
+    padding: 14px 20px;
+    display: flex;
+    align-items: center;
+    gap: 16px;
+    margin: 0 14px;
+    box-sizing: border-box;
+    width: calc(100% - 28px);
+  }
+  .step .num {
+    flex: 0 0 44px;
+    width: 44px;
+    height: 44px;
+    border-radius: 50%;
+    background: var(--code-bg);
+    color: var(--muted);
+    border: 1px solid var(--box-border);
+    display: inline-flex;
+    align-items: center;
+    justify-content: center;
+    font-weight: 700;
+    font-size: 20px;
+  }
+  .step .body { display: flex; flex-direction: column; gap: 5px; min-width: 0; flex: 1 1 auto; }
+  .step .label { font-size: 19px; font-weight: 700; color: var(--fg); line-height: 1.3; }
+  .step .meta {
+    font-size: 13px;
+    color: var(--accent-soft);
+    font-family: 'JetBrains Mono', 'SF Mono', Menlo, monospace;
+    line-height: 1.4;
+    word-break: break-all;
+  }
+  .step.accent {
+    border-color: var(--accent);
+    background: var(--highlight-bg);
+  }
+  .step.accent .num {
+    background: var(--accent);
+    color: #0f172a;
+    border-color: var(--accent);
+  }
+
+  .arrow-cell {
+    display: flex;
+    align-items: center;
+    gap: 12px;
+    color: var(--muted);
+    font-size: 15px;
+    font-family: 'JetBrains Mono', 'SF Mono', Menlo, monospace;
+    padding: 0 14px;
+    height: 100%;
+  }
+  .arrow-cell .line {
+    flex: 1 1 auto;
+    height: 0;
+    border-top: 2px solid var(--muted);
+  }
+  .arrow-cell .head {
+    font-size: 26px;
+    line-height: 1;
+    color: var(--muted);
+  }
+  .arrow-cell.accent { color: var(--accent-soft); }
+  .arrow-cell.accent .line { border-top-color: var(--accent); }
+  .arrow-cell.accent .head { color: var(--accent); }
+  .arrow-cell.left { flex-direction: row-reverse; }
+
+  .arrow-cell .tail-label {
+    white-space: nowrap;
+    color: var(--muted);
+  }
+</style>
+</head>
+<body>
+  <div class="stage">
+
+    <section class="lanes-header">
+      <div class="lane-title pod">
+        <span class="actor">Pod (with AWS SDK)</span>
+        <span class="actor-sub">cluster-blue / namespace / service-A</span>
+      </div>
+      <div class="lane-title eks">
+        <span class="actor">EKS OIDC IdP</span>
+        <span class="actor-sub">oidc.eks.&lt;region&gt;.amazonaws.com/id/&lt;ID&gt;</span>
+      </div>
+      <div class="lane-title sts">
+        <span class="actor">AWS STS</span>
+        <span class="actor-sub">sts.&lt;region&gt;.amazonaws.com</span>
+      </div>
+    </section>
+
+    <main class="body-grid">
+
+      <!-- Step 1: Pod start (in Pod lane) -->
+      <div class="row">
+        <div class="step col-pod">
+          <span class="num">1</span>
+          <div class="body">
+            <div class="label">Pod 시작 — kubelet이 SA projected token mount</div>
+            <div class="meta">/var/run/secrets/eks.amazonaws.com/serviceaccount/token</div>
+          </div>
+        </div>
+      </div>
+
+      <!-- Step 2: Webhook injection (in Pod lane) -->
+      <div class="row">
+        <div class="step col-pod">
+          <span class="num">2</span>
+          <div class="body">
+            <div class="label">Pod Identity Webhook이 env + projected volume 주입</div>
+            <div class="meta">AWS_ROLE_ARN, AWS_WEB_IDENTITY_TOKEN_FILE</div>
+          </div>
+        </div>
+      </div>
+
+      <!-- Step 3: SDK chain match (in Pod lane) -->
+      <div class="row">
+        <div class="step col-pod">
+          <span class="num">3</span>
+          <div class="body">
+            <div class="label">SDK가 chain 평가 — Web Identity Token Provider 매칭</div>
+            <div class="meta">DefaultCredentialsProvider → WebIdentityTokenFileCredentialsProvider</div>
+          </div>
+        </div>
+      </div>
+
+      <!-- Step 4: Pod -> STS AssumeRoleWithWebIdentity -->
+      <div class="row">
+        <div class="step accent col-pod">
+          <span class="num">4</span>
+          <div class="body">
+            <div class="label">STS <span style="color:var(--accent-soft)">AssumeRoleWithWebIdentity</span> 호출</div>
+            <div class="meta">RoleArn + WebIdentityToken (SA JWT)</div>
+          </div>
+        </div>
+        <div class="arrow-cell accent span-eks-sts">
+          <div class="line"></div>
+          <span class="head">▶</span>
+        </div>
+      </div>
+
+      <!-- Step 5: STS -> EKS OIDC JWKS lookup -->
+      <div class="row">
+        <div class="arrow-cell left accent span-pod-eks">
+          <div class="line"></div>
+          <span class="head">◀</span>
+        </div>
+        <div class="step accent col-sts">
+          <span class="num">5</span>
+          <div class="body">
+            <div class="label">STS가 OIDC IdP에서 JWKS 조회 → token signature 검증</div>
+            <div class="meta">GET /.well-known/openid-configuration · /keys</div>
+          </div>
+        </div>
+      </div>
+
+      <!-- Step 6: STS -> Pod with temp credentials -->
+      <div class="row">
+        <div class="arrow-cell accent left span-pod-sts">
+          <div class="line"></div>
+          <span class="head">◀</span>
+        </div>
+        <div class="step accent col-sts">
+          <span class="num">6</span>
+          <div class="body">
+            <div class="label">임시 자격증명 반환 (기본 1h)</div>
+            <div class="meta">AccessKeyId · SecretAccessKey · SessionToken · Expiration</div>
+          </div>
+        </div>
+      </div>
+
+      <!-- Step 7: Pod -> AWS API (S3/DynamoDB/...) -->
+      <div class="row">
+        <div class="step col-pod">
+          <span class="num">7</span>
+          <div class="body">
+            <div class="label">Pod이 임시 자격증명으로 AWS API 호출</div>
+            <div class="meta">SigV4 signed: s3:GetObject, dynamodb:Query, ...</div>
+          </div>
+        </div>
+        <div class="arrow-cell span-eks-sts">
+          <div class="line"></div>
+          <span class="head">▶</span>
+          <span class="tail-label">→ S3 / DynamoDB / ...</span>
+        </div>
+      </div>
+
+    </main>
+
+  </div>
+</body>
+</html>

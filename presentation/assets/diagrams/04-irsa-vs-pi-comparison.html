@@ -1,0 +1,334 @@
+<!doctype html>
+<html lang="ko">
+<head>
+<meta charset="utf-8" />
+<title>04 — IRSA vs EKS Pod Identity (5축 비교)</title>
+<style>
+  :root {
+    --bg: #0f172a;
+    --fg: #e2e8f0;
+    --muted: #94a3b8;
+    --accent: #f59e0b;
+    --accent-soft: #fbbf24;
+    --code-bg: #1e293b;
+    --link: #38bdf8;
+    --box-bg: #1e293b;
+    --box-border: #334155;
+    --card-bg: #131c30;
+    --row-divider: #1f2a44;
+    --irsa-edge: #475569;     /* slate-600, muted tone */
+    --pi-edge: var(--accent); /* amber-500, accented */
+  }
+  html, body {
+    margin: 0;
+    padding: 0;
+    width: 1920px;
+    height: 1080px;
+    background: var(--bg);
+    color: var(--fg);
+    font-family: 'Pretendard', 'Apple SD Gothic Neo', 'Noto Sans KR', sans-serif;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+  }
+  .stage {
+    width: 100%;
+    height: 100%;
+    box-sizing: border-box;
+    padding: 52px 72px 44px;
+    display: flex;
+    flex-direction: column;
+    gap: 24px;
+  }
+
+  /* Header */
+  .header { text-align: center; }
+  .title {
+    font-size: 44px;
+    font-weight: 700;
+    color: var(--accent);
+    letter-spacing: -0.5px;
+    margin: 0 0 8px 0;
+  }
+  .subtitle {
+    font-size: 20px;
+    color: var(--muted);
+    margin: 0;
+    font-weight: 400;
+  }
+
+  /* Comparison grid: axis label column + 2 cards */
+  .compare {
+    flex: 1 1 auto;
+    display: grid;
+    grid-template-columns: 260px 1fr 1fr;
+    grid-template-rows: auto repeat(5, 1fr);
+    gap: 14px 18px;
+  }
+
+  /* Card headers */
+  .card-head {
+    display: flex;
+    flex-direction: column;
+    align-items: center;
+    justify-content: center;
+    gap: 6px;
+    padding: 14px 22px;
+    border-radius: 12px;
+    background: var(--card-bg);
+    border: 2px solid var(--box-border);
+  }
+  .card-head .name {
+    font-size: 30px;
+    font-weight: 800;
+    letter-spacing: -0.3px;
+    line-height: 1.1;
+  }
+  .card-head .tagline {
+    font-size: 14px;
+    color: var(--muted);
+    font-family: 'JetBrains Mono', 'SF Mono', Menlo, monospace;
+    letter-spacing: 0.2px;
+  }
+  .card-head.irsa {
+    border-color: var(--irsa-edge);
+  }
+  .card-head.irsa .name { color: var(--fg); }
+  .card-head.pi {
+    border-color: var(--pi-edge);
+    box-shadow: 0 0 0 1px rgba(245, 158, 11, 0.15) inset;
+  }
+  .card-head.pi .name { color: var(--accent); }
+
+  /* Axis label column */
+  .axis-head {
+    /* placeholder cell at top-left */
+  }
+  .axis {
+    display: flex;
+    align-items: center;
+    justify-content: flex-end;
+    text-align: right;
+    padding: 0 18px 0 0;
+    font-size: 18px;
+    font-weight: 700;
+    color: var(--accent-soft);
+    line-height: 1.3;
+    border-right: 2px dashed var(--row-divider);
+    word-break: keep-all;
+  }
+  .axis .axis-num {
+    display: inline-flex;
+    align-items: center;
+    justify-content: center;
+    width: 26px;
+    height: 26px;
+    border-radius: 50%;
+    background: var(--code-bg);
+    color: var(--accent);
+    font-size: 13px;
+    font-weight: 800;
+    margin-right: 10px;
+    border: 1px solid var(--accent);
+    flex-shrink: 0;
+  }
+
+  /* Cells */
+  .cell {
+    background: var(--card-bg);
+    border: 1px solid var(--box-border);
+    border-radius: 10px;
+    padding: 14px 18px;
+    display: flex;
+    flex-direction: column;
+    justify-content: center;
+    gap: 6px;
+  }
+  .cell.irsa { border-left: 4px solid var(--irsa-edge); }
+  .cell.pi   { border-left: 4px solid var(--pi-edge); background: linear-gradient(180deg, rgba(245,158,11,0.04), rgba(245,158,11,0) 60%), var(--card-bg); }
+
+  .cell .lead {
+    font-size: 16px;
+    font-weight: 700;
+    color: var(--fg);
+    line-height: 1.35;
+  }
+  .cell .detail {
+    font-size: 13px;
+    color: var(--muted);
+    line-height: 1.5;
+  }
+  .cell code {
+    background: var(--code-bg);
+    color: var(--accent-soft);
+    padding: 2px 6px;
+    border-radius: 4px;
+    font-size: 12px;
+    font-family: 'JetBrains Mono', 'SF Mono', Menlo, monospace;
+    word-break: break-all;
+  }
+  .cell .pill {
+    display: inline-block;
+    font-size: 11px;
+    font-weight: 700;
+    padding: 2px 8px;
+    border-radius: 999px;
+    letter-spacing: 0.3px;
+    margin-right: 4px;
+  }
+  .pill.minus {
+    background: rgba(148, 163, 184, 0.15);
+    color: var(--muted);
+    border: 1px solid var(--box-border);
+  }
+  .pill.plus {
+    background: rgba(245, 158, 11, 0.15);
+    color: var(--accent-soft);
+    border: 1px solid var(--accent);
+  }
+
+  /* Bottom callout */
+  .footer {
+    display: flex;
+    flex-direction: column;
+    align-items: center;
+    gap: 8px;
+  }
+  .callout {
+    font-size: 20px;
+    color: var(--fg);
+    text-align: center;
+    background: var(--code-bg);
+    border-left: 4px solid var(--accent);
+    padding: 14px 28px;
+    border-radius: 6px;
+    max-width: 1500px;
+    line-height: 1.5;
+  }
+  .callout strong { color: var(--accent-soft); font-weight: 700; }
+  .callout .em { color: var(--accent); font-weight: 700; }
+  .source {
+    font-size: 12px;
+    color: var(--muted);
+    font-family: 'JetBrains Mono', 'SF Mono', Menlo, monospace;
+  }
+</style>
+</head>
+<body>
+  <div class="stage">
+    <header class="header">
+      <h1 class="title">IRSA vs EKS Pod Identity — 5축 비교</h1>
+      <p class="subtitle">같은 문제(Pod에 IAM 권한 부여)를 두 방식이 어떻게 다르게 푸는가</p>
+    </header>
+
+    <main class="compare">
+      <!-- Row 0: card headers -->
+      <div class="axis-head"></div>
+      <div class="card-head irsa">
+        <div class="name">IRSA</div>
+        <div class="tagline">IAM Roles for Service Accounts (2019~)</div>
+      </div>
+      <div class="card-head pi">
+        <div class="name">EKS Pod Identity</div>
+        <div class="tagline">pods.eks.amazonaws.com (2023.11~)</div>
+      </div>
+
+      <!-- Row 1: Trust mechanism -->
+      <div class="axis"><span class="axis-num">1</span>Trust 메커니즘</div>
+      <div class="cell irsa">
+        <div class="lead">클러스터별 OIDC IdP 등록 필요</div>
+        <div class="detail">
+          <code>Principal.Federated</code> = 클러스터 OIDC provider ARN<br/>
+          → 신규 클러스터마다 IAM OIDC provider 생성
+        </div>
+      </div>
+      <div class="cell pi">
+        <div class="lead">단일 service principal로 고정</div>
+        <div class="detail">
+          <code>Principal.Service</code> = <code>pods.eks.amazonaws.com</code><br/>
+          → 모든 클러스터·계정이 같은 trust 재사용
+        </div>
+      </div>
+
+      <!-- Row 2: Role binding location -->
+      <div class="axis"><span class="axis-num">2</span>Role 연결 위치</div>
+      <div class="cell irsa">
+        <div class="lead">두 곳 (IAM + K8s) 양쪽에 설정</div>
+        <div class="detail">
+          IAM Role <strong>trust policy</strong> 의 <code>sub</code>/<code>aud</code> condition<br/>
+          + ServiceAccount <code>eks.amazonaws.com/role-arn</code> annotation
+        </div>
+      </div>
+      <div class="cell pi">
+        <div class="lead">한 곳 (Pod Identity Association)</div>
+        <div class="detail">
+          EKS API <code>CreatePodIdentityAssociation</code> 한 번 호출<br/>
+          unique key = (cluster, namespace, serviceAccount)
+        </div>
+      </div>
+
+      <!-- Row 3: STS quota -->
+      <div class="axis"><span class="axis-num">3</span>STS quota 사용</div>
+      <div class="cell irsa">
+        <div class="lead"><span class="pill minus">사용</span> Customer 계정 STS 호출</div>
+        <div class="detail">
+          SDK가 Pod 안에서 직접 <code>sts:AssumeRoleWithWebIdentity</code><br/>
+          → Account×Region <strong>STS request quota 소비</strong>
+        </div>
+      </div>
+      <div class="cell pi">
+        <div class="lead"><span class="pill plus">미사용</span> EKS 서비스가 호출</div>
+        <div class="detail">
+          Agent가 <code>eks-auth:AssumeRoleForPodIdentity</code> 호출<br/>
+          → Customer STS quota 소비 없음
+        </div>
+      </div>
+
+      <!-- Row 4: Multi-cluster trust -->
+      <div class="axis"><span class="axis-num">4</span>멀티클러스터 trust 갱신</div>
+      <div class="cell irsa">
+        <div class="lead">클러스터 추가마다 모든 Role의 trust 갱신</div>
+        <div class="detail">
+          Trust policy 길이 한도 2,048 → 8,192자<br/>
+          → Role 하나에 trust 관계 보통 ~4개, 증액해도 ~8개
+        </div>
+      </div>
+      <div class="cell pi">
+        <div class="lead">Trust 변경 불필요 — Association만 추가</div>
+        <div class="detail">
+          Blue/Green 클러스터 전환 시 IAM 변경 0건<br/>
+          새 클러스터에서 Association만 생성
+        </div>
+      </div>
+
+      <!-- Row 5: Required components -->
+      <div class="axis"><span class="axis-num">5</span>의존 컴포넌트</div>
+      <div class="cell irsa">
+        <div class="lead">EKS OIDC IdP + Pod Identity Webhook</div>
+        <div class="detail">
+          Webhook이 SA annotation 보고 env+projected token 주입<br/>
+          (EKS 내장, 별도 add-on 없음)
+        </div>
+      </div>
+      <div class="cell pi">
+        <div class="lead">Pod Identity Agent DaemonSet (Add-on)</div>
+        <div class="detail">
+          노드 link-local <code>169.254.170.23:80</code> + 노드 IAM Role 권한<br/>
+          (EKS Add-on으로 설치/관리)
+        </div>
+      </div>
+    </main>
+
+    <footer class="footer">
+      <div class="callout">
+        Pod Identity는 <strong>trust 정책이 cluster·account에 결합되지 않아</strong>
+        <span class="em">운영 부담이 줄어든다</span> — 같은 Role을 멀티 클러스터·멀티 계정에 그대로 재사용.
+      </div>
+      <div class="source">
+        출처: docs.aws.amazon.com/eks/latest/userguide/service-accounts.html ·
+        pod-identities.html · pod-id-how-it-works.html · IAM/UserGuide/reference_iam-quotas.html
+      </div>
+    </footer>
+  </div>
+</body>
+</html>

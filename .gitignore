@@ -1,0 +1,25 @@
+node_modules/
+.DS_Store
+
+# Build intermediates (slides.pdf, *.webp는 청중 배포용으로 commit)
+presentation/slides.html
+presentation/slides.pptx
+presentation/assets/diagrams/*.png
+
+# Claude Code 런타임 / 개인 환경
+.claude/hook-runs.log
+.claude/.hook-lock
+.claude/scheduled_tasks.lock
+.claude/settings.local.json
+
+# 발표자 전용 (외부 노출 금지)
+init.md
+decisions.md
+presentation/speaker-notes.md
+presentation/drafts/
+
+# Editor / OS
+*.swp
+*~
+.idea/
+.vscode/

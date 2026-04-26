@@ -1,0 +1,487 @@
+<!doctype html>
+<html lang="ko">
+<head>
+<meta charset="utf-8" />
+<title>05 — Multi-Cluster: IRSA Trust Policy Cliff vs Pod Identity Flat</title>
+<style>
+  :root {
+    --bg: #0f172a;
+    --fg: #e2e8f0;
+    --muted: #94a3b8;
+    --accent: #f59e0b;
+    --accent-soft: #fbbf24;
+    --code-bg: #1e293b;
+    --link: #38bdf8;
+    --box-bg: #1e293b;
+    --box-border: #334155;
+    --lane-bg: #131c30;
+    --danger: #ef4444;
+    --danger-soft: #f87171;
+    --ok-soft: #34d399;
+  }
+  html, body {
+    margin: 0;
+    padding: 0;
+    width: 1920px;
+    height: 1080px;
+    background: var(--bg);
+    color: var(--fg);
+    font-family: 'Pretendard', 'Apple SD Gothic Neo', 'Noto Sans KR', sans-serif;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+  }
+  .stage {
+    width: 100%;
+    height: 100%;
+    box-sizing: border-box;
+    padding: 28px 56px 24px;
+    display: flex;
+    flex-direction: column;
+    gap: 14px;
+  }
+
+  .header { text-align: center; }
+  .title {
+    font-size: 36px;
+    font-weight: 700;
+    color: var(--accent);
+    letter-spacing: -0.5px;
+    margin: 0 0 4px 0;
+  }
+  .subtitle {
+    font-size: 17px;
+    color: var(--muted);
+    margin: 0;
+    font-weight: 400;
+  }
+
+  /* panel = top half / bottom half */
+  .panels {
+    flex: 1 1 auto;
+    display: grid;
+    grid-template-rows: 1.15fr 1fr;
+    gap: 14px;
+    min-height: 0;
+  }
+  .panel {
+    background: var(--lane-bg);
+    border: 2px solid var(--box-border);
+    border-radius: 14px;
+    padding: 14px 22px 16px;
+    display: grid;
+    grid-template-columns: 270px 1fr;
+    gap: 22px;
+    position: relative;
+    min-height: 0;
+  }
+  .panel.irsa { border-color: #4a3a2a; }
+  .panel.pid { border-color: #2f5a4a; }
+
+  .panel-tag {
+    position: absolute;
+    top: -14px;
+    left: 24px;
+    background: var(--code-bg);
+    color: var(--accent);
+    font-size: 13px;
+    font-weight: 700;
+    padding: 4px 12px;
+    border-radius: 999px;
+    letter-spacing: 0.3px;
+    border: 1px solid var(--accent);
+  }
+  .panel.pid .panel-tag {
+    color: var(--ok-soft);
+    border-color: var(--ok-soft);
+  }
+
+  .panel-side {
+    display: flex;
+    flex-direction: column;
+    justify-content: center;
+    gap: 10px;
+  }
+  .panel-side .label {
+    font-size: 26px;
+    font-weight: 800;
+    letter-spacing: -0.3px;
+    color: var(--fg);
+  }
+  .panel.irsa .panel-side .label .em { color: var(--accent); }
+  .panel.pid .panel-side .label .em { color: var(--ok-soft); }
+  .panel-side .verdict {
+    font-size: 15px;
+    color: var(--muted);
+    line-height: 1.55;
+  }
+  .panel-side .verdict strong { color: var(--fg); }
+  .panel-side .badge {
+    display: inline-block;
+    width: fit-content;
+    padding: 4px 10px;
+    border-radius: 6px;
+    font-size: 13px;
+    font-weight: 700;
+    letter-spacing: 0.3px;
+    font-family: 'JetBrains Mono', 'SF Mono', Menlo, monospace;
+  }
+  .panel.irsa .panel-side .badge {
+    background: rgba(239, 68, 68, 0.12);
+    color: var(--danger-soft);
+    border: 1px solid rgba(239, 68, 68, 0.4);
+  }
+  .panel.pid .panel-side .badge {
+    background: rgba(52, 211, 153, 0.12);
+    color: var(--ok-soft);
+    border: 1px solid rgba(52, 211, 153, 0.4);
+  }
+
+  /* IRSA right side: role with trust entries growing */
+  .role-card {
+    background: var(--box-bg);
+    border: 2px solid var(--box-border);
+    border-radius: 12px;
+    padding: 12px 14px;
+    display: flex;
+    flex-direction: column;
+    gap: 8px;
+    align-self: stretch;
+    min-height: 0;
+    overflow: hidden;
+  }
+  .role-head {
+    display: flex;
+    align-items: center;
+    justify-content: space-between;
+    border-bottom: 1px solid var(--box-border);
+    padding-bottom: 6px;
+  }
+  .role-name {
+    font-family: 'JetBrains Mono', 'SF Mono', Menlo, monospace;
+    font-size: 15px;
+    color: var(--accent-soft);
+    font-weight: 700;
+  }
+  .role-name::before { content: 'IAM Role · '; color: var(--muted); font-weight: 500; }
+  .role-meta {
+    font-size: 12px;
+    color: var(--muted);
+    font-family: 'JetBrains Mono', 'SF Mono', Menlo, monospace;
+  }
+
+  .trust-list {
+    display: flex;
+    flex-direction: column;
+    gap: 4px;
+    position: relative;
+  }
+  .trust-entry {
+    display: grid;
+    grid-template-columns: 28px 1fr auto;
+    gap: 10px;
+    align-items: center;
+    background: #0f172a;
+    border: 1px solid var(--box-border);
+    border-radius: 8px;
+    padding: 5px 12px;
+    font-family: 'JetBrains Mono', 'SF Mono', Menlo, monospace;
+    font-size: 12.5px;
+    color: var(--fg);
+    line-height: 1.3;
+  }
+  .trust-entry .idx {
+    min-width: 28px;
+    height: 22px;
+    border-radius: 11px;
+    background: var(--muted);
+    color: #0f172a;
+    font-weight: 800;
+    display: inline-flex;
+    align-items: center;
+    justify-content: center;
+    font-size: 11px;
+    font-family: 'Pretendard', sans-serif;
+    padding: 0 6px;
+  }
+  .trust-entry .oidc { color: var(--muted); font-size: 12.5px; }
+  .trust-entry .oidc .cl { color: var(--fg); font-weight: 700; }
+  .trust-entry .tag { font-size: 11px; padding: 2px 7px; border-radius: 999px; font-weight: 700; }
+
+  .trust-entry.warn {
+    border-color: var(--accent);
+    background: rgba(245, 158, 11, 0.08);
+  }
+  .trust-entry.warn .idx { background: var(--accent); }
+  .trust-entry.warn .tag { background: var(--accent); color: #0f172a; }
+
+  .trust-entry.max {
+    border-color: var(--accent-soft);
+    background: rgba(251, 191, 36, 0.06);
+  }
+  .trust-entry.max .idx { background: var(--accent-soft); color: #0f172a; }
+  .trust-entry.max .tag { background: var(--accent-soft); color: #0f172a; }
+
+  .trust-entry.over {
+    border: 1.5px solid var(--danger);
+    background: rgba(239, 68, 68, 0.1);
+    color: var(--danger-soft);
+  }
+  .trust-entry.over .idx { background: var(--danger); color: #fff; }
+  .trust-entry.over .oidc { color: var(--danger-soft); }
+  .trust-entry.over .oidc .cl { color: var(--danger-soft); }
+  .trust-entry.over .tag { background: var(--danger); color: #fff; }
+
+  .limit-callout {
+    position: relative;
+    margin: 2px 0 2px 0;
+    padding: 3px 10px 3px 12px;
+    font-size: 11.5px;
+    font-family: 'JetBrains Mono', 'SF Mono', Menlo, monospace;
+    color: var(--accent);
+    border-left: 2px dashed var(--accent);
+    border-top: none;
+    border-right: none;
+    border-bottom: none;
+    background: transparent;
+  }
+  .limit-callout.solid {
+    color: var(--accent-soft);
+    border-left: 2px solid var(--accent-soft);
+  }
+  .limit-callout.danger {
+    color: var(--danger-soft);
+    border-left: 2px solid var(--danger);
+  }
+
+  /* Pod Identity right side */
+  .pid-grid {
+    display: grid;
+    grid-template-columns: 1fr 360px;
+    gap: 18px;
+    align-items: stretch;
+    min-height: 0;
+  }
+  .clusters {
+    display: grid;
+    grid-template-columns: repeat(4, 1fr);
+    grid-auto-rows: 1fr;
+    gap: 10px;
+    align-content: stretch;
+  }
+  .cluster {
+    background: var(--box-bg);
+    border: 1.5px solid var(--box-border);
+    border-radius: 8px;
+    padding: 8px 10px;
+    display: flex;
+    flex-direction: column;
+    gap: 2px;
+    align-items: flex-start;
+    justify-content: center;
+    font-family: 'JetBrains Mono', 'SF Mono', Menlo, monospace;
+  }
+  .cluster .cl-name {
+    font-size: 13.5px;
+    color: var(--fg);
+    font-weight: 700;
+  }
+  .cluster .cl-assoc {
+    font-size: 11px;
+    color: var(--ok-soft);
+  }
+  .cluster .cl-assoc::before { content: '→ '; }
+
+  .pid-role {
+    background: var(--box-bg);
+    border: 2px solid rgba(52, 211, 153, 0.5);
+    border-radius: 12px;
+    padding: 14px 16px;
+    display: flex;
+    flex-direction: column;
+    gap: 10px;
+    position: relative;
+  }
+  .pid-role::before {
+    content: '';
+    position: absolute;
+    left: -22px;
+    top: 50%;
+    width: 22px;
+    height: 0;
+    border-top: 2px dashed rgba(52, 211, 153, 0.5);
+  }
+  .pid-role .role-head { border-bottom: 1px solid rgba(52, 211, 153, 0.3); }
+  .pid-role .role-name { color: var(--ok-soft); }
+  .pid-role .trust-block {
+    background: #0f172a;
+    border: 1px dashed rgba(52, 211, 153, 0.45);
+    border-radius: 8px;
+    padding: 10px 12px;
+    font-family: 'JetBrains Mono', 'SF Mono', Menlo, monospace;
+    font-size: 12.5px;
+    color: var(--fg);
+    line-height: 1.55;
+    white-space: pre;
+    overflow: hidden;
+  }
+  .pid-role .trust-block .key { color: var(--muted); }
+  .pid-role .trust-block .principal { color: var(--ok-soft); font-weight: 700; }
+  .pid-role .one-line {
+    font-size: 13px;
+    color: var(--ok-soft);
+    font-weight: 700;
+    text-align: center;
+    margin-top: -2px;
+  }
+  .pid-role .one-line::before { content: '✓ '; }
+
+  /* footer caption */
+  .footer {
+    display: flex;
+    justify-content: center;
+  }
+  .caption {
+    font-size: 18px;
+    color: var(--fg);
+    text-align: center;
+    background: var(--code-bg);
+    border-left: 4px solid var(--accent);
+    padding: 12px 28px;
+    border-radius: 6px;
+    max-width: 1500px;
+    line-height: 1.5;
+  }
+  .caption strong { color: var(--accent-soft); font-weight: 700; }
+  .caption .danger { color: var(--danger-soft); font-weight: 700; }
+  .caption .ok { color: var(--ok-soft); font-weight: 700; }
+  .caption .source {
+    display: block;
+    font-size: 12px;
+    color: var(--muted);
+    font-family: 'JetBrains Mono', 'SF Mono', Menlo, monospace;
+    margin-top: 6px;
+  }
+</style>
+</head>
+<body>
+  <div class="stage">
+    <header class="header">
+      <h1 class="title">멀티클러스터 — IRSA의 trust policy 절벽 vs Pod Identity의 평탄화</h1>
+      <p class="subtitle">한 IAM Role을 여러 클러스터에서 공유할 때, 두 모델은 다르게 동작한다</p>
+    </header>
+
+    <main class="panels">
+      <!-- TOP: IRSA -->
+      <section class="panel irsa">
+        <span class="panel-tag">IRSA · Scenario B (단일 Role 공유)</span>
+
+        <div class="panel-side">
+          <div class="label"><span class="em">IRSA</span><br/>trust policy 누적</div>
+          <span class="badge">2048자 → 8192자 (max)</span>
+          <div class="verdict">
+            클러스터를 추가할 때마다 trust policy에 OIDC entry가 <strong>한 줄씩 누적</strong>된다.
+            기본 한도에서는 <strong>~4개</strong>, 증액해도 <strong>~8개</strong>가 사실상 상한.
+            그 이상은 <strong>Role 분리 강제</strong> (Scenario A 회귀).
+          </div>
+        </div>
+
+        <div class="role-card">
+          <div class="role-head">
+            <div class="role-name">role-app-name</div>
+            <div class="role-meta">trust policy length →</div>
+          </div>
+
+          <div class="trust-list">
+            <div class="trust-entry">
+              <span class="idx">1</span>
+              <span class="oidc">OIDC: <span class="cl">cluster-1</span> · sub=system:serviceaccount:app:sa-app</span>
+              <span class="tag" style="background: rgba(148,163,184,0.18); color: var(--muted); border: 1px solid var(--box-border);">ok</span>
+            </div>
+            <div class="trust-entry">
+              <span class="idx">2</span>
+              <span class="oidc">OIDC: <span class="cl">cluster-2</span> · sub=system:serviceaccount:app:sa-app</span>
+              <span class="tag" style="background: rgba(148,163,184,0.18); color: var(--muted); border: 1px solid var(--box-border);">ok</span>
+            </div>
+            <div class="trust-entry">
+              <span class="idx">3</span>
+              <span class="oidc">OIDC: <span class="cl">cluster-3</span> · sub=system:serviceaccount:app:sa-app</span>
+              <span class="tag" style="background: rgba(148,163,184,0.18); color: var(--muted); border: 1px solid var(--box-border);">ok</span>
+            </div>
+            <div class="trust-entry warn">
+              <span class="idx">4</span>
+              <span class="oidc">OIDC: <span class="cl">cluster-4</span> · sub=system:serviceaccount:app:sa-app</span>
+              <span class="tag">default 한도</span>
+            </div>
+            <div class="limit-callout">↑ default trust policy size limit · 2048자 (≈ 4 entries)</div>
+
+            <div class="trust-entry max">
+              <span class="idx">5–8</span>
+              <span class="oidc">OIDC: <span class="cl">cluster-5 … cluster-8</span> (quota 증액 후에만 가능)</span>
+              <span class="tag">증액 영역</span>
+            </div>
+            <div class="limit-callout solid">↑ max even after quota increase · 8192자 (≈ 8 entries)</div>
+
+            <div class="trust-entry over">
+              <span class="idx">9+</span>
+              <span class="oidc">OIDC: <span class="cl">cluster-9, cluster-10 …</span> · 길이 초과 → IAM update 실패</span>
+              <span class="tag">✗ Role 분리 강제</span>
+            </div>
+            <div class="limit-callout danger">→ "duplicate the IAM roles to overcome the trust policy size limit" — AWS 공식</div>
+          </div>
+        </div>
+      </section>
+
+      <!-- BOTTOM: Pod Identity -->
+      <section class="panel pid">
+        <span class="panel-tag">EKS Pod Identity · 단일 Role 공유</span>
+
+        <div class="panel-side">
+          <div class="label"><span class="em">Pod Identity</span><br/>trust policy 평탄</div>
+          <span class="badge">trust 길이 = 클러스터 수와 무관</span>
+          <div class="verdict">
+            Trust policy는 단 한 줄: <strong>service principal <code style="background: var(--code-bg); color: var(--ok-soft); padding: 1px 5px; border-radius: 3px; font-size: 13px;">pods.eks.amazonaws.com</code></strong>.
+            클러스터 N개를 추가해도 <strong>policy 길이는 고정</strong>이고, 각 클러스터는 Pod Identity <strong>association</strong>으로만 Role을 참조한다.
+          </div>
+        </div>
+
+        <div class="pid-grid">
+          <div class="clusters">
+            <div class="cluster"><span class="cl-name">cluster-1</span><span class="cl-assoc">association</span></div>
+            <div class="cluster"><span class="cl-name">cluster-2</span><span class="cl-assoc">association</span></div>
+            <div class="cluster"><span class="cl-name">cluster-3</span><span class="cl-assoc">association</span></div>
+            <div class="cluster"><span class="cl-name">cluster-4</span><span class="cl-assoc">association</span></div>
+            <div class="cluster"><span class="cl-name">cluster-5</span><span class="cl-assoc">association</span></div>
+            <div class="cluster"><span class="cl-name">cluster-6</span><span class="cl-assoc">association</span></div>
+            <div class="cluster"><span class="cl-name">cluster-7</span><span class="cl-assoc">association</span></div>
+            <div class="cluster"><span class="cl-name">cluster-N …</span><span class="cl-assoc">association</span></div>
+          </div>
+
+          <div class="pid-role">
+            <div class="role-head">
+              <div class="role-name">role-app-name</div>
+              <div class="role-meta">trust policy</div>
+            </div>
+            <div class="trust-block"><span class="key">Principal:</span>
+  <span class="key">Service:</span> <span class="principal">pods.eks.amazonaws.com</span>
+<span class="key">Action:</span>
+  sts:AssumeRole
+  sts:TagSession</div>
+            <div class="one-line">한 번 설정하면 모든 클러스터·계정 재사용</div>
+          </div>
+        </div>
+      </section>
+    </main>
+
+    <footer class="footer">
+      <div class="caption">
+        IRSA에서는 클러스터 추가가 곧 <span class="danger">trust policy 길이 누적</span> →
+        결국 <strong>Role 분리(서비스 × 클러스터)</strong>로 회귀.
+        Pod Identity는 trust policy를 <span class="ok">한 줄로 고정</span>하고,
+        cross-cluster 식별은 <strong>ABAC session tag</strong>(<code style="background: var(--code-bg); color: var(--accent-soft); padding: 1px 5px; border-radius: 3px; font-size: 13px;">eks-cluster-arn</code> 등)로 분리한다.
+        <span class="source">출처: AWS Pod Identity launch blog · IAM Service Quotas · EKS Best Practices</span>
+      </div>
+    </footer>
+  </div>
+</body>
+</html>

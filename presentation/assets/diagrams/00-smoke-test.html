@@ -1,0 +1,39 @@
+<!doctype html>
+<html lang="ko">
+<head>
+<meta charset="utf-8" />
+<title>smoke test diagram</title>
+<style>
+  :root {
+    --bg: #0f172a;
+    --fg: #e2e8f0;
+    --accent: #f59e0b;
+    --muted: #94a3b8;
+  }
+  html, body {
+    margin: 0; padding: 0;
+    width: 1920px; height: 1080px;
+    background: var(--bg);
+    color: var(--fg);
+    font-family: 'Pretendard', 'Apple SD Gothic Neo', 'Noto Sans KR', sans-serif;
+    display: flex; align-items: center; justify-content: center;
+  }
+  .card {
+    background: #1e293b;
+    border: 2px solid var(--accent);
+    border-radius: 16px;
+    padding: 60px 80px;
+    text-align: center;
+    box-shadow: 0 8px 40px rgba(0,0,0,0.4);
+  }
+  h1 { color: var(--accent); margin: 0 0 16px; font-size: 64px; }
+  p { color: var(--muted); margin: 0; font-size: 32px; }
+</style>
+</head>
+<body>
+  <div class="card">
+    <h1>build pipeline OK</h1>
+    <p>HTML → playwright → sharp → webp</p>
+  </div>
+</body>
+</html>

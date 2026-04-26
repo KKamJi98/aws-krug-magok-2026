@@ -1,0 +1,311 @@
+<!doctype html>
+<html lang="ko">
+<head>
+<meta charset="utf-8" />
+<title>03 — EKS Pod Identity Token Exchange Flow</title>
+<style>
+  :root {
+    --bg: #0f172a;
+    --fg: #e2e8f0;
+    --muted: #94a3b8;
+    --accent: #f59e0b;
+    --accent-soft: #fbbf24;
+    --code-bg: #1e293b;
+    --link: #38bdf8;
+    --box-bg: #1e293b;
+    --box-border: #334155;
+    --highlight-bg: #2a2118;
+    --lane-bg: #131c30;
+  }
+  html, body {
+    margin: 0;
+    padding: 0;
+    width: 1920px;
+    height: 1080px;
+    background: var(--bg);
+    color: var(--fg);
+    font-family: 'Pretendard', 'Apple SD Gothic Neo', 'Noto Sans KR', sans-serif;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+  }
+  .stage {
+    width: 100%;
+    height: 100%;
+    box-sizing: border-box;
+    padding: 56px 72px;
+    display: flex;
+    flex-direction: column;
+    gap: 28px;
+  }
+
+  /* lanes */
+  .lanes {
+    flex: 1 1 auto;
+    display: grid;
+    grid-template-columns: 1fr 1fr 1fr;
+    gap: 36px;
+    min-height: 0;
+  }
+  .lane {
+    background: var(--lane-bg);
+    border: 2px solid var(--box-border);
+    border-radius: 16px;
+    padding: 30px 28px 28px 28px;
+    display: flex;
+    flex-direction: column;
+    gap: 18px;
+    position: relative;
+    min-height: 0;
+  }
+  .lane.accent { border-color: var(--accent); }
+
+  .lane .lane-head {
+    display: flex;
+    flex-direction: column;
+    gap: 6px;
+    padding-bottom: 16px;
+    border-bottom: 1px solid var(--box-border);
+  }
+  .lane .lane-name {
+    font-size: 28px;
+    font-weight: 700;
+    color: var(--fg);
+    line-height: 1.25;
+    letter-spacing: -0.3px;
+  }
+  .lane .lane-sub {
+    font-size: 16px;
+    color: var(--muted);
+    font-family: 'JetBrains Mono', 'SF Mono', Menlo, monospace;
+    letter-spacing: 0.2px;
+  }
+  .lane.accent .lane-name { color: var(--accent-soft); }
+
+  .lane .lane-tag {
+    position: absolute;
+    top: -14px;
+    left: 28px;
+    background: var(--code-bg);
+    color: var(--accent);
+    font-size: 14px;
+    font-weight: 700;
+    padding: 4px 14px;
+    border-radius: 999px;
+    letter-spacing: 0.4px;
+    border: 1px solid var(--accent);
+  }
+
+  .step {
+    display: grid;
+    grid-template-columns: 44px 1fr;
+    gap: 14px;
+    align-items: start;
+    background: var(--box-bg);
+    border: 1px solid var(--box-border);
+    border-radius: 12px;
+    padding: 16px 18px;
+  }
+  .step .num {
+    display: inline-flex;
+    align-items: center;
+    justify-content: center;
+    width: 40px;
+    height: 40px;
+    border-radius: 50%;
+    background: var(--accent);
+    color: #0f172a;
+    font-weight: 800;
+    font-size: 20px;
+    border: 1px solid var(--accent);
+    margin-top: 1px;
+  }
+  .step .body { display: flex; flex-direction: column; gap: 8px; }
+  .step .label {
+    font-size: 19px;
+    font-weight: 700;
+    color: var(--fg);
+    line-height: 1.3;
+  }
+  .step .detail {
+    font-size: 15px;
+    color: var(--muted);
+    line-height: 1.55;
+  }
+  .step code {
+    background: var(--code-bg);
+    color: var(--accent-soft);
+    padding: 2px 7px;
+    border-radius: 4px;
+    font-size: 13px;
+    font-family: 'JetBrains Mono', 'SF Mono', Menlo, monospace;
+    word-break: break-all;
+  }
+  .step.callout {
+    background: var(--highlight-bg);
+    border: 1px dashed var(--accent);
+  }
+  .step.callout .num {
+    background: var(--code-bg);
+    color: var(--accent);
+    border-color: var(--accent);
+  }
+  .step.callout .label { color: var(--accent-soft); }
+
+  /* inter-lane arrows: a thin connector strip on the right of each non-final lane */
+  .lane .lane-arrow {
+    position: absolute;
+    top: 50%;
+    right: -28px;
+    transform: translateY(-50%);
+    width: 28px;
+    height: 28px;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    color: var(--accent);
+    font-size: 28px;
+    font-weight: 700;
+    z-index: 2;
+  }
+  .lane .lane-arrow.back {
+    top: auto;
+    bottom: 22%;
+    color: var(--muted);
+    font-size: 22px;
+  }
+</style>
+</head>
+<body>
+  <div class="stage">
+    <main class="lanes">
+      <!-- Lane 1: Pod (with SDK) -->
+      <section class="lane">
+        <span class="lane-tag">Lane 1 · Pod</span>
+        <div class="lane-head">
+          <div class="lane-name">Pod (애플리케이션 + AWS SDK)</div>
+          <div class="lane-sub">namespace: app · ServiceAccount: sa-app</div>
+        </div>
+
+        <div class="step">
+          <span class="num">1</span>
+          <div class="body">
+            <div class="label">Pod 시작</div>
+            <div class="detail">Pod Identity Association이 걸린 SA로 Pod이 스케줄·기동</div>
+          </div>
+        </div>
+
+        <div class="step">
+          <span class="num">2</span>
+          <div class="body">
+            <div class="label">EKS가 env + projected token 주입</div>
+            <div class="detail">
+              <code>AWS_CONTAINER_CREDENTIALS_FULL_URI</code> = <code>http://169.254.170.23/v1/credentials</code><br/>
+              <code>AWS_CONTAINER_AUTHORIZATION_TOKEN_FILE</code> = <code>/var/run/secrets/pods.eks.amazonaws.com/serviceaccount/eks-pod-identity-token</code><br/>
+              audience: <code>pods.eks.amazonaws.com</code> · TTL 24h
+            </div>
+          </div>
+        </div>
+
+        <div class="step">
+          <span class="num">3</span>
+          <div class="body">
+            <div class="label">SDK가 Container Credential Provider 진입</div>
+            <div class="detail">env URI 발견 → loopback으로 <code>GET /v1/credentials</code>, <code>Authorization: &lt;token&gt;</code> 헤더 부착</div>
+          </div>
+        </div>
+
+        <div class="step">
+          <span class="num">7</span>
+          <div class="body">
+            <div class="label">Pod이 AWS API 호출</div>
+            <div class="detail">받은 임시 credential로 S3 / DynamoDB / SQS 등 호출 — SDK가 만료 전 자동 갱신</div>
+          </div>
+        </div>
+
+        <span class="lane-arrow">▶</span>
+      </section>
+
+      <!-- Lane 2: Pod Identity Agent on node -->
+      <section class="lane">
+        <span class="lane-tag">Lane 2 · Agent</span>
+        <div class="lane-head">
+          <div class="lane-name">Pod Identity Agent (DaemonSet)</div>
+          <div class="lane-sub">hostNetwork · 169.254.170.23 :80</div>
+        </div>
+
+        <div class="step">
+          <span class="num">4</span>
+          <div class="body">
+            <div class="label">노드 loopback에서 token 수신·검증</div>
+            <div class="detail">
+              Pod은 IMDS(<code>169.254.169.254</code>)를 거치지 않는다 — 노드 내 link-local로만 통신.<br/>
+              Agent가 projected JWT를 풀어 audience·exp·subject 확인.
+            </div>
+          </div>
+        </div>
+
+        <div class="step">
+          <span class="num">5</span>
+          <div class="body">
+            <div class="label">EKS Auth API <code>AssumeRoleForPodIdentity</code> 호출</div>
+            <div class="detail">
+              host: <code>eks-auth.&lt;region&gt;.api.aws</code><br/>
+              auth: <strong style="color:var(--accent-soft)">노드 IAM Role</strong> (권한: <code>eks-auth:AssumeRoleForPodIdentity</code>)<br/>
+              body: <code>{"token": "&lt;projected JWT&gt;"}</code>
+            </div>
+          </div>
+        </div>
+
+        <div class="step callout">
+          <span class="num">!</span>
+          <div class="body">
+            <div class="label">STS API 직접 호출 없음</div>
+            <div class="detail">
+              Pod도 Agent도 <code>sts.amazonaws.com</code>을 부르지 않는다.<br/>
+              Token 교환은 EKS Auth API가 처리 → <strong style="color:var(--accent-soft)">customer STS quota 미사용</strong>.
+            </div>
+          </div>
+        </div>
+
+        <span class="lane-arrow">▶</span>
+      </section>
+
+      <!-- Lane 3: EKS Auth API -->
+      <section class="lane accent">
+        <span class="lane-tag">Lane 3 · EKS Auth API</span>
+        <div class="lane-head">
+          <div class="lane-name">EKS Auth API</div>
+          <div class="lane-sub">eks-auth.&lt;region&gt;.api.aws</div>
+        </div>
+
+        <div class="step">
+          <span class="num">6</span>
+          <div class="body">
+            <div class="label">임시 credential 반환 (SigV4)</div>
+            <div class="detail">
+              <code>accessKeyId</code> · <code>secretAccessKey</code> · <code>sessionToken</code> · <code>expiration</code><br/>
+              자동 session tag 6종을 <strong style="color:var(--accent-soft)">transitive</strong>로 첨부:<br/>
+              <code>eks-cluster-name</code>, <code>eks-cluster-arn</code>,<br/>
+              <code>kubernetes-namespace</code>, <code>kubernetes-service-account</code>,<br/>
+              <code>kubernetes-pod-name</code>, <code>kubernetes-pod-uid</code><br/>
+              → ABAC 조건(<code>aws:PrincipalTag/...</code>)으로 활용 가능
+            </div>
+          </div>
+        </div>
+
+        <div class="step callout">
+          <span class="num">★</span>
+          <div class="body">
+            <div class="label">Trust policy: 단일 Service Principal</div>
+            <div class="detail">
+              <code>Principal: { "Service": "pods.eks.amazonaws.com" }</code><br/>
+              OIDC URL·Account ID에 결합되지 않음 → 모든 클러스터·계정에 동일 trust policy 재사용
+            </div>
+          </div>
+        </div>
+      </section>
+    </main>
+  </div>
+</body>
+</html>
