@@ -28,7 +28,7 @@ AWS KRUG 마곡 DevOps 소모임 · 2026-04-28
 
 ## 목차
 
-1. Pod이 AWS 리소스에 접근하는 방법 — credential provider chain
+1. Pod가 AWS 리소스에 접근하는 방법 — credential provider chain
 2. IRSA와 Pod Identity 구조 비교
 3. 멀티클러스터 환경에서 IRSA의 운영 부담
 4. Pod Identity가 그 부담을 어떻게 해소하는가

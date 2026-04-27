@@ -125,7 +125,7 @@
 
 - **기존 application Pod**: `AssumeRoleForPodIdentity` 응답의 `expiration`(보통 약 6시간 전후의 STS 세션) 동안 SDK 측 cache에서 자체 보유. agent DaemonSet이 죽거나 재시작 중이어도 기존 credential은 즉시 무효화되지 않는다 — 만료까지는 유효하다.[^pi-how-it-works] [^java-http-creds-builder] (primary docs+javadoc; agent 코드는 발급 측만 다룸)
 - **Refresh 시점에 agent가 unhealthy면**: SDK는 endpoint(`169.254.170.23:80`)에 접속 실패 → SDK별 retry 정책에 따라 재시도. AWS 공식 문서에 표준화된 retry/backoff 사양은 명시되어 있지 않다 — **확인 필요 — SDK별 구현 차이**.[^sdkref-container-fetch] (secondary; 명확한 답 없음)
-- **Cold start (Pod이 처음 만들어지고 첫 호출)**: SDK는 `AWS_CONTAINER_CREDENTIALS_FULL_URI` env에 첫 GET을 보낸다. agent가 healthy하지 않으면 첫 API 호출이 즉시 실패하거나 SDK retry로 지연된다. agent 자체는 1분 readiness probe(failureThreshold=30 → 최대 5분), 30초 liveness probe로 readiness/health를 자체 체크하지만,[^epi-daemonset] **SDK 측 첫 호출에 대한 명시적 backoff 정책은 AWS 공식 문서에 없음 — 확인 필요**. (primary manifest + secondary)
+- **Cold start (Pod가 처음 만들어지고 첫 호출)**: SDK는 `AWS_CONTAINER_CREDENTIALS_FULL_URI` env에 첫 GET을 보낸다. agent가 healthy하지 않으면 첫 API 호출이 즉시 실패하거나 SDK retry로 지연된다. agent 자체는 1분 readiness probe(failureThreshold=30 → 최대 5분), 30초 liveness probe로 readiness/health를 자체 체크하지만,[^epi-daemonset] **SDK 측 첫 호출에 대한 명시적 backoff 정책은 AWS 공식 문서에 없음 — 확인 필요**. (primary manifest + secondary)
 - Agent 자신의 EKS Auth 호출은 `service.go`에서 socket timeout 500ms / 전체 timeout 1000ms로 짧게 잡혀 있다 — 즉 agent → EKS Auth 호출 자체는 느슨한 timeout이 아니라 빠른 fail 후 SDK 재시도/agent 캐시 재시도에 의존하는 설계.[^epi-eksauth-service] (primary, code)
 - README와 헬름 차트는 agent를 `priorityClassName: system-node-critical`, `terminationGracePeriodSeconds: 30`, `RollingUpdate maxUnavailable: 10%`로 운영해 노드 단위 가용성을 확보하라고 권장한다.[^epi-daemonset] [^epi-values] (primary, manifest)
 

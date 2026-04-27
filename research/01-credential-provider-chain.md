@@ -49,8 +49,8 @@
 
 ### IMDS hop-limit interaction
 
-- EKS Best Practices: Pod이 IMDS를 사용해야 하는 경우 IMDSv2를 쓰고 EC2 instance hop limit을 **2** 로 늘리라고 권장한다 (default는 1, EKS-eksctl/CloudFormation 템플릿은 자동으로 2로 설정).[^eks-bp-imds-hop]
-- Pod Identity Agent는 노드의 DaemonSet pod (host network 아님 — agent는 `hostNetwork: true`를 사용하지 않고 노드 loopback IP `169.254.170.23`에서 listen한다)이며, **EKS Auth API와 통신**해 credential을 가져온다. Application pod이 agent를 호출하는 것은 IMDS 호출이 아니라 노드 loopback HTTP 엔드포인트 호출이다.[^pod-id-agent-setup] [^pod-id-how-it-works]
+- EKS Best Practices: Pod가 IMDS를 사용해야 하는 경우 IMDSv2를 쓰고 EC2 instance hop limit을 **2** 로 늘리라고 권장한다 (default는 1, EKS-eksctl/CloudFormation 템플릿은 자동으로 2로 설정).[^eks-bp-imds-hop]
+- Pod Identity Agent는 노드의 DaemonSet pod (host network 아님 — agent는 `hostNetwork: true`를 사용하지 않고 노드 loopback IP `169.254.170.23`에서 listen한다)이며, **EKS Auth API와 통신**해 credential을 가져온다. Application pod가 agent를 호출하는 것은 IMDS 호출이 아니라 노드 loopback HTTP 엔드포인트 호출이다.[^pod-id-agent-setup] [^pod-id-how-it-works]
 - 따라서 IMDS hop limit = 1 설정은 **Pod Identity 동작을 차단하지 않는다** (Pod Identity는 IMDS 경로를 사용하지 않음). Application pod도 IMDS hop을 거치지 않고 같은 노드의 agent에 접속한다.[^pod-id-agent-setup]
 - 단, **EKS Auto Mode**는 IMDSv2 + hop limit = 1을 강제하며 변경할 수 없다. IMDS access가 필요한 Pod는 `hostNetwork: true`로 실행해야 한다.[^eks-automode-imds]
 - 확인 필요 — Pod Identity Agent 자신이 EKS Auth API endpoint로 가는 경로에서 IMDS를 사용해 Region/credential을 부트스트랩하는지에 대한 명시적 AWS 문서 진술은 못 찾음. Agent는 노드 IAM role(`eks-auth:AssumeRoleForPodIdentity` 권한 필요)을 사용한다고 명시되어 있고[^pod-id-agent-setup], 노드 IAM role 자체는 IMDS hop 1로도 노드 kubelet/agent가 접근 가능하므로 실무상 문제 없음. 추가 검증은 별도 연구 단계로.
