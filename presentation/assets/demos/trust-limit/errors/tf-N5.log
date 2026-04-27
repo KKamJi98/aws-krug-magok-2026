@@ -1,0 +1,64 @@
+data.aws_caller_identity.current: Reading...
+data.aws_caller_identity.current: Read complete after 0s [id=123456789012]
+aws_iam_role.demo: Refreshing state... [id=role-trust-limit-demo-tf]
+
+Terraform used the selected providers to generate the following execution
+plan. Resource actions are indicated with the following symbols:
+  ~ update in-place
+
+Terraform will perform the following actions:
+
+  # aws_iam_role.demo will be updated in-place
+  ~ resource "aws_iam_role" "demo" {
+      ~ assume_role_policy    = jsonencode(
+          ~ {
+              ~ Statement = [
+                    # (3 unchanged elements hidden)
+                    {
+                        Action    = "sts:AssumeRoleWithWebIdentity"
+                        Condition = {
+                            StringEquals = {
+                                "oidc.eks.ap-northeast-2.amazonaws.com/id/DEMO0000000000000000000000000004:aud" = "sts.amazonaws.com"
+                                "oidc.eks.ap-northeast-2.amazonaws.com/id/DEMO0000000000000000000000000004:sub" = "system:serviceaccount:external-dns:external-dns"
+                            }
+                        }
+                        Effect    = "Allow"
+                        Principal = {
+                            Federated = "arn:aws:iam::123456789012:oidc-provider/oidc.eks.ap-northeast-2.amazonaws.com/id/DEMO0000000000000000000000000004"
+                        }
+                    },
+                  + {
+                      + Action    = "sts:AssumeRoleWithWebIdentity"
+                      + Condition = {
+                          + StringEquals = {
+                              + "oidc.eks.ap-northeast-2.amazonaws.com/id/DEMO0000000000000000000000000005:aud" = "sts.amazonaws.com"
+                              + "oidc.eks.ap-northeast-2.amazonaws.com/id/DEMO0000000000000000000000000005:sub" = "system:serviceaccount:external-dns:external-dns"
+                            }
+                        }
+                      + Effect    = "Allow"
+                      + Principal = {
+                          + Federated = "arn:aws:iam::123456789012:oidc-provider/oidc.eks.ap-northeast-2.amazonaws.com/id/DEMO0000000000000000000000000005"
+                        }
+                    },
+                ]
+                # (1 unchanged attribute hidden)
+            }
+        )
+        id                    = "role-trust-limit-demo-tf"
+        name                  = "role-trust-limit-demo-tf"
+        tags                  = {
+            "creator" = "kkamji"
+            "purpose" = "aws-krug-2026-irsa-trust-limit-demo"
+        }
+        # (11 unchanged attributes hidden)
+    }
+
+Plan: 0 to add, 1 to change, 0 to destroy.
+aws_iam_role.demo: Modifying... [id=role-trust-limit-demo-tf]
+
+Error: updating IAM Role (role-trust-limit-demo-tf) assume role policy: operation error IAM: UpdateAssumeRolePolicy, https response error StatusCode: 409, RequestID: e24b93ab-9a0e-48f1-b7d0-1e8500fe629f, LimitExceeded: Cannot exceed quota for ACLSizePerRole: 2048
+
+  with aws_iam_role.demo,
+  on main.tf line 97, in resource "aws_iam_role" "demo":
+  97: resource "aws_iam_role" "demo" {
+

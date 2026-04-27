@@ -39,15 +39,17 @@ AWS Korea User Group 마곡 DevOps 소모임 (2026-04-28) 발표 자료입니다
 │   ├── slides.pdf                # 발표 최종 PDF (31장)
 │   ├── slides.md                 # Marp 원본
 │   ├── theme.css                 # 커스텀 테마
-│   └── assets/diagrams/          # HTML 다이어그램 source + webp 산출물
-│       ├── 01-credential-chain.html       # Java v2 6단계
-│       ├── 01b-credential-chain-python.html  # Boto3 12단계 중 핵심 6단계
-│       ├── 01c-credential-chain-js.html   # JavaScript v3 7단계
-│       ├── 01d-credential-chain-go.html   # Go v2 4단계
-│       ├── 02-irsa-flow.html              # IRSA 동작 흐름
-│       ├── 03-pod-identity-flow.html      # Pod Identity 동작 흐름
-│       ├── 04-irsa-vs-pi-comparison.html  # IRSA vs Pod Identity 5축 비교
-│       └── 05-multi-cluster-pitfalls.html # trust policy 길이 벽
+│   ├── assets/diagrams/          # HTML 다이어그램 source + webp 산출물
+│   │   ├── 01-credential-chain.html       # Java v2 6단계
+│   │   ├── 01b-credential-chain-python.html  # Boto3 12단계 중 핵심 6단계
+│   │   ├── 01c-credential-chain-js.html   # JavaScript v3 7단계
+│   │   ├── 01d-credential-chain-go.html   # Go v2 4단계
+│   │   ├── 02-irsa-flow.html              # IRSA 동작 흐름
+│   │   ├── 03-pod-identity-flow.html      # Pod Identity 동작 흐름
+│   │   ├── 04-irsa-vs-pi-comparison.html  # IRSA vs Pod Identity 5축 비교
+│   │   └── 05-multi-cluster-pitfalls.html # trust policy 길이 벽
+│   └── assets/demos/             # 라이브 실험 evidence (results.tsv, error logs, screenshots)
+│       └── trust-limit/          # IRSA trust policy 2048자 한도 데모 결과
 ├── research/                     # 섹션별 리서치 노트 (출처 footnote 포함)
 │   ├── 00-outline.md             # 전체 outline + 시간 배분
 │   ├── 01-credential-provider-chain.md
@@ -56,8 +58,13 @@ AWS Korea User Group 마곡 DevOps 소모임 (2026-04-28) 발표 자료입니다
 │   ├── 04-irsa-vs-pod-identity.md
 │   ├── 05-multi-cluster-irsa-pitfalls.md
 │   └── 06-pod-identity-migration.md
+├── scripts/
+│   ├── build-slides.sh                   # Marp PDF 빌드
+│   ├── render-diagrams.{js,sh}           # HTML 다이어그램 → webp 렌더
+│   ├── irsa-trust-limit-demo.sh          # AWS CLI 기반 trust 한도 데모
+│   └── terraform-trust-limit-demo/       # Terraform 기반 동일 데모
 ├── references.md                 # 인용한 AWS 공식 문서 / SDK / GitHub URL 카탈로그
-└── Makefile                      # 빌드 진입점
+└── Makefile                      # 빌드/데모 진입점
 ```
 
 ## 인용 출처
@@ -92,6 +99,41 @@ make watch
 - Node 18+
 - `playwright` Chromium (`npx playwright install chromium`)
 - `sharp` (npm 의존성에 포함)
+
+## IRSA trust policy 한도 데모 (라이브 실험)
+
+발표 섹션 5(멀티클러스터 IRSA 함정)의 **"trust policy 길이의 벽"** 주장을 직접 재현하는 스크립트입니다. 개인 AWS 계정에 fake OIDC provider 12개를 등록하고 한 IAM Role 의 trust statement 를 1개씩 늘려가며 한도(default 2,048자) 도달 시점의 실제 에러 메시지를 캡처합니다.
+
+```bash
+# 1) 계정/리전 확인 (interactive 컨펌)
+make demo-trust-preflight
+
+# 2) fake OIDC provider 12개 등록 (~10초, 무료)
+make demo-trust-provision
+
+# 3) Role 생성 + trust 1..N 점진 시도 → 한도에서 LimitExceeded 발생
+make demo-trust-run
+make demo-trust-show          # results.tsv 표 출력
+
+# 4) Terraform 동일 시나리오 (provision 으로 등록한 OIDC provider 재사용)
+make demo-trust-tf-init
+make demo-trust-tf-apply  TRUST_COUNT=4   # OK
+make demo-trust-tf-apply  TRUST_COUNT=5   # FAIL: ACLSizePerRole 2048
+make demo-trust-tf-capture TRUST_COUNT=5  # 출력을 errors/tf-N5.log 로 저장
+
+# 5) 정리
+make demo-trust-tf-destroy
+make demo-trust-cleanup
+```
+
+**필수**: AWS CLI v2, `jq`, (Terraform 1.5+ 데모만), 자격증명이 가리키는 계정에서 IAM Role / OIDC provider create/delete 권한.
+
+**산출물**: `presentation/assets/demos/trust-limit/`
+- `results.tsv` — entry 수 / 정규화 길이 / 성공·실패 / 에러 코드
+- `errors/n-NN.err` — bash 데모 stderr 원문
+- `errors/tf-N*.log` — Terraform apply 출력 캡처
+
+전체 옵션은 `make help` 참고.
 
 ## 라이선스
 

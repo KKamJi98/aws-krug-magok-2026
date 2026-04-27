@@ -18,6 +18,18 @@ decisions.md
 presentation/speaker-notes.md
 presentation/drafts/
 
+# 라이브 데모 작업 상태 (account ID 포함, 로컬 전용)
+tmp/
+# 데모 evidence 의 raw(원본) 사이드카 — sanitize 전 버전, commit 금지
+presentation/assets/demos/**/*.raw
+
+# Terraform 데모 (state·provider 캐시는 로컬 전용)
+scripts/terraform-trust-limit-demo/.terraform/
+scripts/terraform-trust-limit-demo/.terraform.lock.hcl
+scripts/terraform-trust-limit-demo/terraform.tfstate
+scripts/terraform-trust-limit-demo/terraform.tfstate.backup
+scripts/terraform-trust-limit-demo/*.tfvars
+
 # Editor / OS
 *.swp
 *~

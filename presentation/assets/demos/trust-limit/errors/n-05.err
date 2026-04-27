@@ -1,0 +1,2 @@
+
+aws: [ERROR]: An error occurred (LimitExceeded) when calling the UpdateAssumeRolePolicy operation: Cannot exceed quota for ACLSizePerRole: 2048
