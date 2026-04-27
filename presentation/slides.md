@@ -167,7 +167,7 @@ AWS KRUG 마곡 DevOps 소모임 · 2026-04-28
 
 ## Pod Identity 구조: Agent가 노드에서 대신 받아옴
 
-![h:480](assets/diagrams/03-pod-identity-flow.webp)
+![h:440](assets/diagrams/03-pod-identity-flow.webp)
 
 - 노드 DaemonSet **Pod Identity Agent**가 loopback `169.254.170.23:80`에서 대기
 - SDK는 표준 **Container credential provider** slot에서 agent를 호출
@@ -245,7 +245,7 @@ AWS KRUG 마곡 DevOps 소모임 · 2026-04-28
 
 ## 그러면 단일 Role + 합친 trust로 가면? — trust policy 길이의 벽
 
-![h:480](assets/diagrams/05-multi-cluster-pitfalls.webp)
+![h:440](assets/diagrams/05-multi-cluster-pitfalls.webp)
 
 - IAM quota 표: trust policy **default 2,048자, 자동 승인 max 8,192자** (whitespace 제외)
 - AWS Pod Identity 공식 blog: *"default 2048자 → **typically 4개**, 증액해도 **typically 최대 8개**"*
@@ -351,7 +351,7 @@ for https://oidc.eks.<region>.amazonaws.com/id/<UNIQUE_ID>
 
 ## Pod Identity 동작 한 장 — 7-step flow
 
-![h:480](assets/diagrams/03-pod-identity-flow.webp)
+![h:440](assets/diagrams/03-pod-identity-flow.webp)
 
 - SDK는 Container provider slot에서 `AWS_CONTAINER_CREDENTIALS_FULL_URI`를 읽어 loopback `169.254.170.23`으로 GET
 - 노드의 **Pod Identity Agent**(DaemonSet)가 projected SA token으로 EKS Auth API `AssumeRoleForPodIdentity` 호출
