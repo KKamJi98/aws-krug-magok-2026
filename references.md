@@ -37,6 +37,12 @@
 - [AWS Identity and Access Management endpoints and quotas](https://docs.aws.amazon.com/general/latest/gr/iam-service.html) — IAM 서비스 쿼터 공식 테이블 (Role trust policy length L-C07B4B0D default 2,048자 조정 가능, Roles per account L-FE177D64 default 1,000)
 - [EKS Best Practices — Known Limits and Service Quotas](https://docs.aws.amazon.com/eks/latest/best-practices/known_limits_and_service_quotas.html) — EKS 운영 시 닿는 IAM/VPC/ELB 쿼터 목록. IRSA 관련 trust policy 길이·OIDC provider 수·Role 수 쿼터를 "Impact" 컬럼과 함께 명시
 - [Set up IAM runtime role for EMR on EKS](https://docs.aws.amazon.com/emr/latest/EMR-on-EKS-DevelopmentGuide/setting-up-enable-IAM.html) — "maximum of twelve EKS clusters due to the 4096 character limit" — IRSA trust policy 길이 제약의 타 서비스 실사례 인용 근거
+- [Amazon EKS service quotas](https://docs.aws.amazon.com/eks/latest/userguide/service-quotas.html) — Pod Identity association 5,000개 한도; "Adjustments to the following components are not supported in Service Quotas: Pod Identity associations per cluster" — Service Quotas 콘솔 증액 불가 명시
+- [EKS Auto Mode overview](https://docs.aws.amazon.com/eks/latest/userguide/automode.html) — "You do not have to install the EKS Pod Identity Agent on EKS Auto Mode clusters. This capability is built into EKS Auto Mode." — Auto Mode에서 agent 별도 설치 불필요
+- [Assign a target IAM role to a Pod Identity association](https://docs.aws.amazon.com/eks/latest/userguide/pod-id-assign-target-role.html) — targetRoleArn cross-account role chaining; credential 캐시 기간: target role 없을 때 6h, target role 있을 때 59분; externalId로 confused-deputy 방지
+- [Tagging AWS STS session tags](https://docs.aws.amazon.com/IAM/latest/UserGuide/id_session-tags.html) — session tag transitive 전달 동작; Pod Identity 6개 tag가 cross-account AssumeRole chaining 후에도 PrincipalTag로 평가 가능한 근거
+- [Pod Identity associations — eksctl](https://docs.aws.amazon.com/eks/latest/eksctl/pod-identity-associations.html) — eksctl ClusterConfig `iam.podIdentityAssociations` 필드 스키마; `eksctl utils migrate-to-pod-identity`; add-on auto-apply
+- [AWS::EKS::PodIdentityAssociation — CloudFormation](https://docs.aws.amazon.com/AWSCloudFormation/latest/UserGuide/aws-resource-eks-podidentityassociation.html) — CloudFormation resource type 필수 속성(ClusterName/Namespace/ServiceAccount/RoleArn), update behavior(replacement vs no-interruption), 출력 속성(AssociationArn/AssociationId/ExternalId)
 
 ## AWS SDK
 
@@ -67,6 +73,7 @@
 
 <!-- launch announcement, deep dive 등 -->
 - [Amazon EKS Pod Identity: a new way for applications on EKS to obtain IAM credentials](https://aws.amazon.com/blogs/containers/amazon-eks-pod-identity-a-new-way-for-applications-on-eks-to-obtain-iam-credentials/) — Pod Identity launch blog (2023-12-28). IRSA 멀티클러스터 한계(trust policy 길이 2048→8192, 보통 4~8 trust, OIDC provider per-account quota), Pod Identity 비교표, 마이그레이션 dual-trust 패턴
+- [Amazon EKS Pod Identity streamlines cross-account access](https://aws.amazon.com/blogs/containers/amazon-eks-pod-identity-streamlines-cross-account-access/) — cross-account target role 기능 GA 블로그; targetRoleArn 설정, CFN/ACK 예시, ABAC cross-account 패턴
 
 ## CNCF / Kubernetes 문서
 

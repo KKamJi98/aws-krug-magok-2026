@@ -22,6 +22,9 @@
 | 4 | [Section 4 — 멀티클러스터 IRSA 운영 함정](#section-4) | 13–16 | trust policy 길이 quota(2,048 / 8,192), OIDC IdP per-account quota, blue/green trust drift, CloudTrail 사각지대 |
 | 5 | [Section 5 — 마이그레이션과 한계](#section-5) | 17–20, 26–28 | chain precedence 안전망, dual-trust pattern, 미지원 환경, SDK 최소 버전, PrivateLink |
 | 6 | [Section 6 — 정리](#section-6) | 29–31 | 결합점 이동: per-cluster → per-service |
+| D | [부록 D — 예상 Q&A](#부록-d--예상-qa) | — | 발표 후 청중이 던질 가능성 높은 10개 질문 + AWS docs 기반 답변 |
+| E | [부록 E — 운영/디버깅 플레이북](#부록-e--운영디버깅-플레이북) | — | 8개 실무 시나리오: 증상 → 원인 → 진단 명령 → 해결 |
+| F | [부록 F — 마이그레이션 자동화 패턴](#부록-f--마이그레이션-자동화-패턴) | — | eksctl / Terraform / ACK / CloudFormation / Pulumi 별 association 선언 + blue/green lifecycle |
 
 ---
 
@@ -596,3 +599,581 @@ make watch
 - GitHub — [`aws/eks-pod-identity-agent`](https://github.com/aws/eks-pod-identity-agent)
 - GitHub — [`aws/amazon-eks-pod-identity-webhook`](https://github.com/aws/amazon-eks-pod-identity-webhook)
 - AWS re:Post — [IRSA troubleshooting (`InvalidIdentityToken`)](https://repost.aws/knowledge-center/eks-troubleshoot-irsa-errors)
+
+---
+
+## 부록 D — 예상 Q&A
+
+각 Q에는 슬라이드/대본에서 다 다루지 못한 보충 답변과 출처를 함께 정리한다. 모든 사실 주장은 AWS 공식 문서를 우선 인용했고, 확인이 어려운 부분은 "확인 필요"로 명시한다.
+
+### D.1 — "SA마다 IAM Role을 따로 만들어야 하나요? 단일 Role + ABAC만으로 가능한가요?"
+
+EKS 베스트 프랙티스 가이드는 **"Use one IAM role per application"**을 명시적으로 권장한다.[^bp-one-role] 애플리케이션별로 격리(blast radius 축소)하고 최소 권한을 적용하기 쉬워서다. 다만 같은 가이드는 **"When using ABAC with EKS Pod Identity, you may use a common IAM role across multiple service accounts and rely on their session attributes for access control. This is especially useful when operating at scale"**라고 ABAC 패턴도 공식적으로 인정한다.[^bp-one-role] 즉 "Role 분리"가 디폴트, "공용 Role + ABAC"는 규모가 커서 Role 수를 관리하기 부담스러울 때 선택하는 보완책이다. Pod Identity는 `eks-cluster-arn`, `kubernetes-namespace`, `kubernetes-service-account` 등 6개 session tag를 자동 주입하므로 ABAC 조건문 작성이 IRSA보다 용이하다.[^d-pod-id-abac] 결론: **IRSA 시절부터 자리잡은 "앱당 Role" 원칙은 그대로 유지하되, 수백~수천 SA로 늘어나는 워크로드에서만 ABAC 기반 공용 Role을 검토**한다.
+
+### D.2 — "association 5,000개 한도를 넘으면 어떻게 하나요?"
+
+공식 문서는 **"Up to 5,000 EKS Pod Identity associations per cluster"**라고만 명시한다.[^d-pod-id-limits] 그리고 EKS service quotas 페이지는 **"Adjustments to the following components are not supported in Service Quotas: Pod Identity associations per cluster"**라고 못박아, **Service Quotas 콘솔에서 quota 증액 신청이 불가능한 항목**임을 명확히 한다.[^eks-quotas] 공식 문서에는 "soft limit인지 hard limit인지" 명시 표현이 없으나, Service Quotas adjustable 대상이 아니라는 점은 사실상 hard limit으로 운영해야 함을 시사한다 (증액이 필요하면 AWS Support 케이스를 통한 별도 요청 경로가 필요할 수 있음 — **확인 필요**). 실무 회피책은 (1) 공용 Role + ABAC로 association 수 자체를 줄이거나, (2) 클러스터를 분할(tenant별/도메인별)해서 association을 분산하는 것이다. 5,000개에 근접하기 전에 metrics(association count)를 모니터링해 임계 알람을 거는 게 안전하다.
+
+### D.3 — "Karpenter / Auto Mode에서 Pod Identity가 잘 동작하나요?"
+
+**Auto Mode**: 공식 문서는 **"You do not have to install the EKS Pod Identity Agent on EKS Auto Mode clusters. This capability is built into EKS Auto Mode."**라고 명시한다.[^auto-mode-id][^d-agent-setup] 따로 add-on 설치가 필요 없다. **Karpenter (managed Karpenter 또는 self-managed)**: agent는 DaemonSet이므로 Karpenter가 띄운 노드에도 자동으로 스케줄된다. 단 **노드 IAM Role에 `eks-auth:AssumeRoleForPodIdentity` 권한이 반드시 있어야 한다**.[^d-agent-setup] AWS managed policy인 `AmazonEKSWorkerNodePolicy`에 이미 포함되어 있으므로 Karpenter NodeClass의 `role`이 이 managed policy를 attach하고 있다면 추가 작업이 없다.[^d-agent-setup] private subnet 노드라면 EKS Auth API용 PrivateLink VPC endpoint(`com.amazonaws.<region>.eks-auth`) 설정이 추가로 필요하다.[^d-agent-setup] Karpenter NodeClass에서 커스텀 노드 Role을 쓰는 환경이라면 이 두 가지(`eks-auth:AssumeRoleForPodIdentity` 권한, PrivateLink endpoint)를 사전 점검해야 한다.
+
+### D.4 — "NetworkPolicy로 link-local 169.254.170.23 egress가 차단되면?"
+
+agent는 **호스트의 link-local 주소 `169.254.170.23` (IPv4) 또는 `[fd00:ec2::23]` (IPv6)의 80/2703 포트**를 사용해 Pod에 credential을 제공한다.[^d-pod-id-limits][^d-agent-setup] Pod이 이 link-local로의 egress를 NetworkPolicy로 차단하면 SDK가 credential을 받지 못해 401/403 또는 timeout이 발생한다. AWS 문서는 NetworkPolicy 관련 직접 가이드는 두지 않지만, **"For pods using a proxy, add `169.254.170.23` (IPv4) and `[fd00:ec2::23]` (IPv6) to the `no_proxy/NO_PROXY` environment variables to prevent failed requests to the EKS Pod Identity Agent"**라는 운영 권고를 명시한다.[^d-pod-id-limits] Calico/Cilium 사용 시 권장 패턴: (1) default-deny egress NetworkPolicy를 두되 link-local CIDR(`169.254.170.23/32`)을 명시적 허용으로 추가, (2) IPv6 cluster라면 `fd00:ec2::23/128`도 같이 허용, (3) `hostNetwork: true` Pod은 NetworkPolicy 적용 대상이 아님(IMDS와 동일 경로 사용).[^d-pod-id-limits]
+
+### D.5 — "기존 cross-account `sts:AssumeRole` wrapper를 어떻게 정리하나요?"
+
+2025년 6월 GA된 **target IAM role 기능**으로 코드의 wrapper를 제거할 수 있다.[^cross-account-blog][^target-role] 동작 원리: Pod Identity association에 (a) cluster 계정의 EKS Pod Identity Role과 (b) 다른 계정의 **Target IAM Role** ARN을 함께 등록하면, agent가 두 단계 role chaining (`AssumeRole` → `AssumeRole`)을 자동 수행해 cross-account 임시 자격증명을 SDK에 전달한다.[^target-role] 애플리케이션 코드는 default credential chain을 그대로 사용하면 되므로 기존 `boto3.client('sts').assume_role(...)` 같은 wrapper를 삭제하고 SDK 기본 client만 쓰면 된다. 주의점 두 가지: (1) **caching** — target role을 쓰면 credential 캐시가 6시간이 아닌 **59분**으로 짧아진다.[^target-role] (2) **trust policy** — Target Role의 trust policy에 source role ARN과 (옵션) `aws:RequestTag/eks-cluster-arn` 등 PrincipalTag 조건을 걸어 cluster/namespace/service-account를 강제 검증해야 안전하다.[^target-role]
+
+### D.6 — "Pod가 장시간 떠 있을 때 credential 갱신, agent 재시작 시 영향?"
+
+Pod에 마운트되는 projected service account token은 **`expirationSeconds: 86400` (24시간)**이고 kubelet이 80% 시점에 자동 rotate한다.[^d-pod-id-howitworks][^bp-irsa-token] agent는 이 token을 받아 EKS Auth API의 `AssumeRoleForPodIdentity`를 호출해 임시 자격증명을 발급한다.[^d-assumerole-pi] 캐싱 정책은: target role이 **없을 때 6시간**, **target role이 있을 때 59분** 캐시.[^target-role] 즉 6시간 이상 떠 있는 Pod은 SDK가 만료 직전 자동으로 agent에 재요청해 새 credential을 받아간다. **agent가 죽으면**: agent는 DaemonSet이라 kubelet이 자동 재기동하고, agent가 죽어 있는 동안 SDK가 캐시한 credential은 만료까지 그대로 유효하지만, 만료 후 갱신 시도는 connection refused로 실패한다 (agent가 link-local 80/2703을 listen 못 하므로).[^d-pod-id-limits] 따라서 add-on health 모니터링(`kubectl get ds -n kube-system eks-pod-identity-agent`)과 PDB는 운영 필수다. **agent 자체의 재시작 resilience 정확한 동작 — 확인 필요**.
+
+### D.7 — "Pod Identity는 CloudTrail에 어떻게 찍히고, audit에 충분한가요?"
+
+agent가 호출하는 API는 **`AssumeRoleForPodIdentity`**이고, 응답의 role session name은 다음 형식이다: **`eks-<clusterName>-<podName>-<random UUID>`**.[^d-assumerole-pi] 따라서 CloudTrail의 `userIdentity.arn` 또는 `assumedRoleUser.arn`을 grep하면 어느 cluster의 어느 Pod이 자격증명을 받아갔는지 추적할 수 있다. 자동 부착되는 6개 session tag(`eks-cluster-arn`, `kubernetes-namespace`, `kubernetes-service-account`, `kubernetes-pod-name`, `kubernetes-pod-uid`, `eks-cluster-name`)도 CloudTrail event의 session 정보에 포함되어 ABAC 감사에 활용 가능하다.[^d-pod-id-abac][^session-tags-ctlogs] IRSA의 `InvalidIdentityToken` 같은 OIDC 기반 인증 실패는 Pod Identity에서는 `InvalidTokenException`/`ExpiredTokenException`으로 대체된다.[^d-assumerole-pi] **두 패턴 모두 CloudTrail data plane event 비활성화 환경에서는 `AssumeRoleForPodIdentity` event 가시성이 제한될 수 있음 — 확인 필요** (EKS Auth API event의 CloudTrail 카테고리/추적 옵션).
+
+### D.8 — "transitive session tag는 어떻게 활용하면 좋나요? 6개 다 써야 하나요?"
+
+Pod Identity가 부착하는 6개 session tag는 **모두 transitive**다.[^d-pod-id-abac] **"All of the session tags that are added by EKS Pod Identity are transitive; the tag keys and values are passed to any AssumeRole actions that your workloads use to switch roles into another account"**.[^d-pod-id-abac] 따라서 cross-account chaining 후에도 target 계정 리소스 정책에서 `aws:PrincipalTag/kubernetes-namespace` 같은 조건을 그대로 평가할 수 있다. **6개 다 쓸 필요는 없다**. 베스트 프랙티스 가이드는 안전한 ABAC 조건의 최소 조합으로 **`eks-cluster-arn` + `kubernetes-namespace` + `kubernetes-service-account` 세 개를 동시에 검사**할 것을 권한다.[^bp-pi-abac] 이유: namespace나 service account는 cluster 간/account 간 동일 이름이 존재할 수 있어 단독 사용 시 우회 가능하다.[^bp-pi-abac] cluster ARN까지 함께 비교해야 안전하다. `kubernetes-pod-name`/`pod-uid`는 Pod 단위 고유값이라 정책 작성에는 부적합 (rolling 시 매번 바뀜). 권장 조합: cluster ARN + namespace + SA의 3-tag.
+
+### D.9 — "GitOps/IaC에서 association을 어떻게 관리하나요?"
+
+association은 EKS API 리소스이므로 **선언형 관리가 전제로 설계되어 있다**.[^d-create-pi-api] 주요 옵션:
+
+- **eksctl**: `iam.podIdentityAssociations` 필드로 namespace/SA/roleArn을 YAML 선언, `eksctl utils migrate-to-pod-identity`로 IRSA 일괄 마이그레이션 지원.[^d-eksctl-pi]
+- **Terraform**: `aws_eks_pod_identity_association` resource (provider AWS ≥ 5.29.0).
+- **CloudFormation / CDK**: `AWS::EKS::PodIdentityAssociation`.[^cross-account-blog]
+- **AWS Controllers for Kubernetes (ACK)**: EKS controller로 Kubernetes CRD 형태로 association 선언 가능.[^cross-account-blog]
+- **EKS Add-on auto-apply**: `addonsConfig.autoApplyPodIdentityAssociations: true`로 add-on 설치 시 association 자동 생성.[^d-eksctl-pi]
+
+ArgoCD GitOps 운영 시에는 ACK나 Terraform-managed 방식이 자연스럽다(ACK는 cluster-internal CRD라 ArgoCD sync 대상 그대로). eksctl YAML은 cluster-bootstrap 단계에 적합하고 day-2 변경은 Terraform/ACK가 낫다. **eventual consistency**(association 생성 후 수 초 지연)는 모든 도구 공통 주의점이다.[^d-pod-id-limits] 도구별 선언 예시는 부록 F 참고.
+
+### D.10 — "전환 후 IRSA로 롤백 가능한가요? dual-trust 패턴 안전한가요?"
+
+**Credential provider chain 우선순위 덕분에 안전하게 dual-trust 운영이 가능하다.** 공식 문서: **"EKS Pod Identities have been added to the Container credential provider which is searched in a step in the default credential chain. If your workloads currently use credentials that are earlier in the chain of credentials, those credentials will continue to be used even if you configure an EKS Pod Identity association for the same workload. This way you can safely migrate from other types of credentials by creating the association first, before removing the old credentials."**[^d-pod-id-howitworks] 즉 IRSA가 chain에서 Container credential provider보다 앞에 있으므로, IRSA env(`AWS_WEB_IDENTITY_TOKEN_FILE`)가 살아있으면 Pod Identity association이 있어도 IRSA가 우선 사용된다. **권장 마이그레이션 순서**: (1) IAM Role의 trust policy에 IRSA용 OIDC statement와 Pod Identity용 `pods.eks.amazonaws.com` statement를 둘 다 추가(dual-trust), (2) Pod Identity association 생성, (3) Pod의 ServiceAccount annotation(`eks.amazonaws.com/role-arn`)을 제거하고 Pod 재기동 → Pod Identity로 전환, (4) 모니터링 후 문제 없으면 trust policy에서 OIDC statement 제거.[^bp-pi-trust][^d-pod-id-howitworks] 문제 발생 시 (3)단계 직전으로 SA annotation을 복구하면 즉시 IRSA로 fallback. trust policy에 두 statement를 동시 두는 것은 IAM 표준 동작이라 안전하다.[^bp-pi-trust]
+
+### D 인용
+
+[^bp-one-role]: <https://docs.aws.amazon.com/eks/latest/best-practices/identity-and-access-management.html>
+[^d-pod-id-abac]: <https://docs.aws.amazon.com/eks/latest/userguide/pod-id-abac.html>
+[^d-pod-id-limits]: <https://docs.aws.amazon.com/eks/latest/userguide/pod-identities.html>
+[^eks-quotas]: <https://docs.aws.amazon.com/eks/latest/userguide/service-quotas.html>
+[^auto-mode-id]: <https://docs.aws.amazon.com/eks/latest/userguide/automode.html>
+[^d-agent-setup]: <https://docs.aws.amazon.com/eks/latest/userguide/pod-id-agent-setup.html>
+[^cross-account-blog]: <https://aws.amazon.com/blogs/containers/amazon-eks-pod-identity-streamlines-cross-account-access/>
+[^target-role]: <https://docs.aws.amazon.com/eks/latest/userguide/pod-id-assign-target-role.html>
+[^d-pod-id-howitworks]: <https://docs.aws.amazon.com/eks/latest/userguide/pod-id-how-it-works.html>
+[^bp-irsa-token]: <https://docs.aws.amazon.com/eks/latest/best-practices/identity-and-access-management.html>
+[^d-assumerole-pi]: <https://docs.aws.amazon.com/eks/latest/APIReference/API_auth_AssumeRoleForPodIdentity.html>
+[^session-tags-ctlogs]: <https://docs.aws.amazon.com/IAM/latest/UserGuide/id_session-tags.html>
+[^bp-pi-abac]: <https://docs.aws.amazon.com/eks/latest/best-practices/identity-and-access-management.html>
+[^d-create-pi-api]: <https://docs.aws.amazon.com/eks/latest/APIReference/API_PodIdentityAssociation.html>
+[^d-eksctl-pi]: <https://docs.aws.amazon.com/eks/latest/eksctl/pod-identity-associations.html>
+[^bp-pi-trust]: <https://docs.aws.amazon.com/eks/latest/best-practices/identity-and-access-management.html>
+
+---
+
+## 부록 E — 운영/디버깅 플레이북
+
+각 시나리오: 증상 → 원인 가설 → 진단 명령 → 해결 → AWS 공식 출처.
+
+### E.1 — Pod가 자격증명을 못 받는다 (`The security token included in the request is invalid` / `NoCredentialProviders`)
+
+**증상**
+
+Pod 안에서 `aws sts get-caller-identity`가 `NoCredentialProviders: no valid providers in chain` 또는 `The security token included in the request is invalid`를 반환한다. SDK는 default credential chain을 끝까지 훑고도 EKS Pod Identity Agent에서 자격증명을 받아오지 못한 상태다.[^e-pi-howitworks]
+
+**원인 가설**
+
+- Pod Identity association이 해당 namespace/ServiceAccount에 만들어지지 않았다.
+- SDK 버전이 container credential provider를 지원하지 않는다 (Boto3 ≥ 1.34.41, Go v2 ≥ 2023-11-14, Java v2 ≥ 2.21.30 등).[^e-pi-sdk]
+- Pod 매니페스트에 IRSA의 `AWS_WEB_IDENTITY_TOKEN_FILE` env가 먼저 잡혀 chain에서 IRSA가 우선 선택되었다 (Pod Identity는 chain에 추가될 뿐이며 더 앞 단계에서 자격증명이 발견되면 그것이 사용된다).[^e-pi-howitworks]
+- `eks-pod-identity-agent` DaemonSet pod가 해당 노드에서 죽어 있다.
+
+**진단 명령**
+
+```bash
+# 1) Association 존재 여부
+aws eks list-pod-identity-associations \
+  --cluster-name <cluster-blue> \
+  --namespace <ns> --service-account <sa>
+
+# 2) Pod에 환경변수가 주입됐는지 (주입되면 Pod Identity 경로, 없으면 association 누락 또는 Pod 미재시작)
+kubectl get pod <pod> -o jsonpath='{.spec.containers[*].env}' | tr ',' '\n' | grep -E 'AWS_CONTAINER_(CREDENTIALS_FULL_URI|AUTHORIZATION_TOKEN_FILE)'
+
+# 3) 같은 노드의 agent pod 상태/로그
+NODE=$(kubectl get pod <pod> -o jsonpath='{.spec.nodeName}')
+kubectl -n kube-system get pod -l app.kubernetes.io/name=eks-pod-identity-agent --field-selector spec.nodeName=$NODE
+kubectl -n kube-system logs -l app.kubernetes.io/name=eks-pod-identity-agent --field-selector spec.nodeName=$NODE --tail=200
+
+# 4) SDK debug log (Python 예시)
+AWS_LOG_LEVEL=debug python -c "import boto3; print(boto3.client('sts').get_caller_identity())"
+```
+
+**해결**
+
+1. Association이 없으면 생성하고 Pod를 재시작한다 (`AWS_CONTAINER_CREDENTIALS_FULL_URI` env는 Pod 시작 시점에만 주입된다).[^e-pi-howitworks]
+2. SDK 최소 버전을 컨테이너 이미지 기준으로 올린다.[^e-pi-sdk]
+3. IRSA env가 남아 있으면 ServiceAccount의 `eks.amazonaws.com/role-arn` annotation을 제거하고 Pod를 재시작한다 (E.6 참고).
+4. Agent 로그가 `AssumeRoleForPodIdentity` 실패를 보이면 노드 IAM role 권한을 확인한다 (E.2 참고).
+
+**출처**
+
+[^e-pi-howitworks][^e-pi-sdk]
+
+### E.2 — Agent CrashLoopBackOff / NotReady
+
+**증상**
+
+`kubectl -n kube-system get ds eks-pod-identity-agent`의 READY가 노드 수보다 작다. 개별 pod는 `CrashLoopBackOff`이거나 `Running`이지만 readiness probe가 실패한다.
+
+**원인 가설**
+
+- 노드 IAM role에 `eks-auth:AssumeRoleForPodIdentity` 권한이 없다 (`AmazonEKSWorkerNodePolicy` 미부착 또는 자체 정책 누락).[^e-pi-agent-setup]
+- 노드에서 IPv6가 비활성화되어 있는데 agent가 기본값으로 `[fd00:ec2::23]` 바인딩을 시도한다.[^e-pi-considerations]
+- 같은 노드에 hostNetwork로 port 80/2703을 점유하는 다른 워크로드가 있다.[^e-pi-considerations]
+- EKS Auth API에 도달할 수 없다 (private cluster, E.3 참고).[^e-pi-agent-setup]
+
+**진단 명령**
+
+```bash
+kubectl -n kube-system describe ds eks-pod-identity-agent
+kubectl -n kube-system logs ds/eks-pod-identity-agent --tail=200
+
+# 노드 IAM role 권한 확인 (관리형 노드그룹)
+aws eks describe-nodegroup --cluster-name <cluster-blue> --nodegroup-name <ng> \
+  --query 'nodegroup.nodeRole'
+aws iam list-attached-role-policies --role-name <node-role>
+
+# probe (agent 컨테이너는 :2703/healthz, :2703/readyz 사용)
+kubectl -n kube-system exec ds/eks-pod-identity-agent -- wget -qO- http://127.0.0.1:2703/readyz
+```
+
+**해결**
+
+1. 노드 IAM role에 `AmazonEKSWorkerNodePolicy`를 attach하거나 `eks-auth:AssumeRoleForPodIdentity` 단일 권한을 가진 인라인 정책을 추가한다.[^e-pi-agent-setup]
+2. IPv6를 못 쓰는 노드에서는 add-on `configurationValues`로 `{"agent":{"additionalArgs":{"-b":"169.254.170.23"}}}`를 설정해 IPv4-only로 바인딩한다.[^e-pi-ipv6]
+3. 변경 후 `kubectl rollout status daemonset/eks-pod-identity-agent -n kube-system`로 롤아웃을 확인한다.[^e-pi-ipv6]
+
+**출처**
+
+[^e-pi-agent-setup][^e-pi-considerations][^e-pi-ipv6]
+
+### E.3 — Private cluster: `eks-auth` PrivateLink 누락
+
+**증상**
+
+Public NAT가 없거나 VPC가 격리된 private subnet에서 agent 로그에 `i/o timeout` 또는 `dial tcp ... eks-auth.<region>.api.aws:443: connect`가 반복된다. Pod는 자격증명을 받지 못한다. AWS 공식 가이드는 private subnet 노드의 경우 EKS Auth API용 PrivateLink interface endpoint가 **반드시** 필요하다고 명시한다.[^e-pi-agent-setup]
+
+**진단 명령**
+
+```bash
+# DNS 해석 확인 (노드 또는 디버그 Pod에서)
+kubectl -n kube-system debug node/<node> -it --image=public.ecr.aws/amazonlinux/amazonlinux:2 -- bash -c 'dig +short eks-auth.<region>.api.aws; dig +short eks-auth.<region>.amazonaws.com'
+
+# eks-auth endpoint 존재 여부
+aws ec2 describe-vpc-endpoints \
+  --filters Name=service-name,Values=com.amazonaws.<region>.eks-auth \
+  --query 'VpcEndpoints[].{id:VpcEndpointId,state:State,subnets:SubnetIds,sg:Groups}'
+
+# endpoint SG가 노드 CIDR로부터 443 인바운드 허용하는지
+aws ec2 describe-security-groups --group-ids <eks-auth-endpoint-sg> \
+  --query 'SecurityGroups[].IpPermissions'
+```
+
+**해결**
+
+1. EKS Auth API용 interface endpoint를 만든다.
+
+   ```bash
+   aws ec2 create-vpc-endpoint \
+     --vpc-id <vpc-id> --vpc-endpoint-type Interface \
+     --service-name com.amazonaws.<region>.eks-auth \
+     --subnet-ids <subnet-a> <subnet-b> \
+     --security-group-ids <eks-auth-endpoint-sg> \
+     --private-dns-enabled
+   ```
+
+2. endpoint SG에 노드 SG로부터 TCP 443 인바운드를 허용한다.
+3. private DNS가 켜져 있어야 `eks-auth.<region>.api.aws` 기본 이름이 endpoint로 라우팅된다 (VPC `enableDnsHostnames`/`enableDnsSupport` 필요).[^e-eks-privatelink]
+
+**출처**
+
+[^e-pi-agent-setup][^e-eks-privatelink]
+
+### E.4 — Proxy 환경: `no_proxy` 누락
+
+**증상**
+
+http(s) proxy를 강제하는 클러스터에서 Pod 첫 호출 시 자격증명 획득이 timeout된다. SDK가 `http://169.254.170.23/v1/credentials`를 proxy로 보내려다 실패한다. 공식 가이드는 proxy 사용 시 `169.254.170.23`(IPv4)와 `[fd00:ec2::23]`(IPv6)을 `no_proxy/NO_PROXY`에 추가하라고 명시한다.[^e-pi-considerations]
+
+**진단 명령**
+
+```bash
+# Pod의 proxy env 확인
+kubectl exec <pod> -- env | grep -iE '^(http|https|no)_proxy'
+
+# 자격증명 endpoint 직접 호출 (Pod 내부)
+kubectl exec <pod> -- sh -c 'curl -sS -H "Authorization: $(cat $AWS_CONTAINER_AUTHORIZATION_TOKEN_FILE)" $AWS_CONTAINER_CREDENTIALS_FULL_URI | head -c 200'
+```
+
+**해결**
+
+PodSpec env 또는 namespace-level injector(예: `kube-environment-injector` 같은 mutating webhook)에 다음을 추가한다.
+
+```yaml
+env:
+  - name: NO_PROXY
+    value: "169.254.170.23,[fd00:ec2::23],169.254.169.254,.svc,.cluster.local,10.0.0.0/8"
+  - name: no_proxy
+    value: "169.254.170.23,[fd00:ec2::23],169.254.169.254,.svc,.cluster.local,10.0.0.0/8"
+```
+
+cluster-wide containerd HTTP proxy를 쓰는 경우 노드 단위 `/etc/systemd/system/containerd.service.d/http-proxy.conf`의 `NO_PROXY`도 동일하게 갱신한다.
+
+**출처**
+
+[^e-pi-considerations]
+
+### E.5 — Cross-account: confused-deputy 방지 (`externalId`)
+
+**증상**
+
+`targetRoleArn`을 사용한 cross-account 접근 시, 다른 cluster/namespace의 ServiceAccount가 같은 source-account의 EKS Pod Identity role을 거쳐 동일한 target role을 assume할 수 있다. trust policy가 source account의 root만 신뢰하면 confused deputy가 성립한다.[^confused-deputy]
+
+**원인**
+
+cross-account 호출은 EKS Auth가 **role chaining** (Pod Identity role → target role)으로 처리한다. session tag를 활성화한 기본 모드에서는 EKS Auth가 `eks-cluster-arn`/`kubernetes-namespace`/`kubernetes-service-account`를 transitive session tag로 붙인다. session tag를 비활성화한 경우 EKS Pod Identity는 `sts:ExternalId`를 `region/account/cluster-name/namespace/service-account-name` 형식으로 넣는다.[^e-pi-target-role]
+
+**진단 명령**
+
+```bash
+# Target role의 trust policy 확인
+aws iam get-role --role-name <target-role> --query Role.AssumeRolePolicyDocument
+
+# CloudTrail에서 cross-account AssumeRole 호출 검사
+aws cloudtrail lookup-events \
+  --lookup-attributes AttributeKey=EventName,AttributeValue=AssumeRole \
+  --max-results 20 \
+  --query 'Events[?contains(Resources[].ResourceName,`<target-role>`)]'
+```
+
+**해결**
+
+trust policy에 cluster·namespace·SA를 고정하는 조건을 강제한다. session tag가 켜져 있을 때:
+
+```json
+{
+  "Effect": "Allow",
+  "Principal": {"AWS": "arn:aws:iam::<source-acct>:root"},
+  "Action": ["sts:AssumeRole","sts:TagSession"],
+  "Condition": {
+    "StringEquals": {
+      "aws:RequestTag/eks-cluster-arn": "arn:aws:eks:<region>:<source-acct>:cluster/cluster-blue",
+      "aws:RequestTag/kubernetes-namespace": "<ns>",
+      "aws:RequestTag/kubernetes-service-account": "<sa>"
+    },
+    "ArnEquals": {
+      "aws:PrincipalArn": "arn:aws:iam::<source-acct>:role/eks-pod-identity-primary-role"
+    }
+  }
+}
+```
+
+session tag를 끈 경우 `sts:ExternalId`로 동일 의미를 강제한다 (값 형식은 위 원인 참고).[^e-pi-target-role]
+
+**출처**
+
+[^e-pi-target-role][^confused-deputy]
+
+### E.6 — 마이그레이션 후 여전히 IRSA 동작 (annotation 미제거)
+
+**증상**
+
+Pod Identity association을 만들었는데 CloudTrail에는 `AssumeRoleWithWebIdentity`가 계속 찍히고 `AssumeRoleForPodIdentity`는 안 보인다. SDK가 chain 앞단의 IRSA web identity를 먼저 잡고 멈추기 때문이다.[^e-pi-howitworks]
+
+**진단 명령**
+
+```bash
+# ServiceAccount에 IRSA annotation이 남아 있는지
+kubectl get sa <sa> -n <ns> -o jsonpath='{.metadata.annotations}'
+
+# Pod env에서 IRSA token mount 확인
+kubectl get pod <pod> -o jsonpath='{.spec.containers[*].env}' | tr ',' '\n' \
+  | grep -E 'AWS_(WEB_IDENTITY_TOKEN_FILE|ROLE_ARN|CONTAINER_CREDENTIALS_FULL_URI)'
+
+# CloudTrail 분포 비교 (최근 1시간)
+aws cloudtrail lookup-events \
+  --start-time $(date -u -v-1H +%FT%TZ) \
+  --lookup-attributes AttributeKey=EventName,AttributeValue=AssumeRoleWithWebIdentity \
+  --max-results 50 --query 'length(Events)'
+aws cloudtrail lookup-events \
+  --start-time $(date -u -v-1H +%FT%TZ) \
+  --lookup-attributes AttributeKey=EventName,AttributeValue=AssumeRoleForPodIdentity \
+  --max-results 50 --query 'length(Events)'
+```
+
+**해결**
+
+1. ServiceAccount의 `eks.amazonaws.com/role-arn` annotation을 제거한다.[^e-pi-association]
+2. Pod를 재생성한다 (env는 Pod admission 시점에 주입되며 in-place update가 안 된다).[^e-pi-howitworks]
+3. 점진 마이그레이션 중이면 IRSA env를 가진 Pod와 Pod Identity Pod를 라벨로 분리하고, CloudTrail로 두 이벤트의 비율이 100%로 넘어가는지 추적한다.
+
+**출처**
+
+[^e-pi-howitworks][^e-pi-association]
+
+### E.7 — ABAC 조건이 작동 안 함 (transitive 누락 / packed policy 한도)
+
+**증상**
+
+target role 또는 resource policy에서 `aws:PrincipalTag/eks-cluster-arn` 조건이 false로 평가되어 `AccessDenied`가 발생한다. 또는 Pod 시작 시 `PackedPolicyTooLarge` 에러로 자격증명 발급 자체가 실패한다.[^e-pi-abac]
+
+**원인 가설**
+
+- 워크로드가 SDK 안에서 추가로 `sts:AssumeRole`을 호출(role chaining)하면서 EKS Pod Identity가 붙인 session tag를 transitive로 넘기지 않았다 — Pod Identity가 붙이는 tag 자체는 transitive지만, 사용자 코드가 다시 chain할 때 `--transitive-tag-keys`를 명시하지 않으면 다음 세션에 안 넘어간다.[^e-pi-abac][^e-iam-session-tags]
+- Pod Identity 기본 session tag 6개 + 사용자 inline session policy + role policy ARN의 합이 packed binary 한도를 초과했다 (`PackedPolicyTooLarge`).[^e-pi-abac]
+
+**진단 명령**
+
+```bash
+# 어떤 tag가 실제로 세션에 들어갔는지 (Pod 안에서)
+kubectl exec <pod> -- aws sts get-caller-identity --debug 2>&1 | grep -i tag
+
+# 정책 시뮬레이션 (외부 계정에서 target role 기준)
+aws iam simulate-principal-policy \
+  --policy-source-arn arn:aws:iam::<acct>:role/<target-role> \
+  --action-names s3:GetObject \
+  --resource-arns arn:aws:s3:::<bucket>/* \
+  --context-entries ContextKeyName=aws:PrincipalTag/eks-cluster-arn,ContextKeyType=string,ContextKeyValues=arn:aws:eks:<region>:<acct>:cluster/cluster-blue
+```
+
+**해결**
+
+1. user-side `AssumeRole` 호출에 `--transitive-tag-keys eks-cluster-arn,kubernetes-namespace,kubernetes-service-account`를 명시한다.[^e-iam-session-tags]
+2. `PackedPolicyTooLarge`가 뜨면 Pod Identity association에서 **Disable session tags**를 켜고 필요한 tag만 IAM role에 직접 attach해 `aws:PrincipalTag/...`로 참조한다 — Pod Identity가 IAM role tag도 동일 키 형식으로 노출한다.[^e-pi-abac]
+3. session policy를 줄이거나 권한을 별도 role로 분리한다.
+
+**출처**
+
+[^e-pi-abac][^e-iam-session-tags]
+
+### E.8 — Agent 헬스 체크 / probe port 진단
+
+**증상**
+
+agent pod는 `Running`인데 readiness probe가 실패해 NotReady로 떨어진다. 동일 노드의 워크로드 Pod가 자격증명 endpoint(`169.254.170.23:80`)에 연결을 못 한다.
+
+**진단 명령**
+
+agent의 health probe는 hostNetwork에서 port `2703`을 사용하며, liveness는 `/healthz`, readiness는 `/readyz` 경로다. 자격증명 발급은 link-local IP의 port `80`을 통해 이뤄진다.[^e-pi-considerations][^e-pi-agent-helm]
+
+```bash
+# 노드 셸에서 직접 probe (디버그 Pod)
+kubectl debug node/<node> -it --image=public.ecr.aws/amazonlinux/amazonlinux:2 -- \
+  sh -c 'curl -fsS http://127.0.0.1:2703/healthz; echo; curl -fsS http://127.0.0.1:2703/readyz'
+
+# 자격증명 endpoint 응답 (hostNetwork agent에 직접)
+kubectl debug node/<node> -it --image=public.ecr.aws/amazonlinux/amazonlinux:2 -- \
+  curl -sS -o /dev/null -w '%{http_code}\n' http://169.254.170.23/v1/credentials
+
+# probe 실패 원인 — describe로 lastState/exitCode 확인
+kubectl -n kube-system describe pod -l app.kubernetes.io/name=eks-pod-identity-agent --field-selector spec.nodeName=<node>
+```
+
+**해결**
+
+1. `/readyz`가 503이면 agent 로그에서 `AssumeRoleForPodIdentity` 호출 실패(노드 role 권한, eks-auth 도달 불가)를 우선 본다 (E.2/E.3).
+2. port 2703이 다른 hostNetwork 워크로드와 충돌하면 충돌 워크로드를 옮긴다 (agent는 system-node-critical로 우선순위가 높지만 port 충돌은 별개).[^e-pi-considerations]
+3. 헬스 체크 자체는 정상인데 워크로드 Pod 호출이 실패하면 NetworkPolicy가 link-local IP 트래픽을 차단했는지 확인한다 (eBPF/Cilium NetworkPolicy 환경에서 빈번).
+
+**출처**
+
+[^e-pi-considerations][^e-pi-agent-helm]
+
+### E 인용
+
+[^e-pi-howitworks]: <https://docs.aws.amazon.com/eks/latest/userguide/pod-id-how-it-works.html>
+[^e-pi-sdk]: <https://docs.aws.amazon.com/eks/latest/userguide/pod-id-minimum-sdk.html>
+[^e-pi-agent-setup]: <https://docs.aws.amazon.com/eks/latest/userguide/pod-id-agent-setup.html>
+[^e-pi-considerations]: <https://docs.aws.amazon.com/eks/latest/userguide/pod-identities.html>
+[^e-pi-ipv6]: <https://docs.aws.amazon.com/eks/latest/userguide/pod-id-agent-config-ipv6.html>
+[^e-eks-privatelink]: <https://docs.aws.amazon.com/eks/latest/userguide/vpc-interface-endpoints.html>
+[^e-pi-target-role]: <https://docs.aws.amazon.com/eks/latest/userguide/pod-id-assign-target-role.html>
+[^confused-deputy]: <https://docs.aws.amazon.com/IAM/latest/UserGuide/confused-deputy.html>
+[^e-pi-association]: <https://docs.aws.amazon.com/eks/latest/userguide/pod-id-association.html>
+[^e-pi-abac]: <https://docs.aws.amazon.com/eks/latest/userguide/pod-id-abac.html>
+[^e-iam-session-tags]: <https://docs.aws.amazon.com/IAM/latest/UserGuide/id_session-tags.html>
+[^e-pi-agent-helm]: <https://github.com/aws/eks-pod-identity-agent> (charts/eks-pod-identity-agent/values.yaml — `agent.probePort: 2703`, `livenessEndpoint: /healthz`, `readinessEndpoint: /readyz`. AWS 공식 user-guide에는 probe path 명시가 없으므로 agent repo의 Helm chart values를 참조함; 확인 필요 시 `kubectl -n kube-system get ds eks-pod-identity-agent -o yaml`로 실제 probe 정의를 확인.)
+
+---
+
+## 부록 F — 마이그레이션 자동화 패턴
+
+이 부록은 Pod Identity Association을 코드로 관리하기 위한 도구별 패턴과, blue/green 시나리오에서 association lifecycle을 어떻게 다룰지 정리한다. 각 도구는 동일한 EKS API(`CreatePodIdentityAssociation`)를 호출하므로[^eks-api-create] 결과 리소스는 동일하지만, 선언 모델·drift 처리·GitOps 적합도가 달라 사용처가 갈린다.
+
+### F.1 — eksctl `ClusterConfig` (선언형)
+
+`eksctl`은 `iam.podIdentityAssociations` 필드로 association을 ClusterConfig 안에서 선언적으로 관리한다.[^f-eksctl-pi] 사전 조건으로 `eks-pod-identity-agent` addon이 클러스터에 설치돼 있어야 하며, 이 또한 `addons:` 블록에 추가하면 자동 설치된다.[^f-eksctl-pi] 필수 필드는 `namespace`, `serviceAccountName`이고, IAM 측은 `roleARN`을 직접 지정하거나 `permissionPolicyARNs`/`permissionPolicy`/`wellKnownPolicies` 중 하나로 자동 role 생성을 위임할 수 있다 (상호 배타).[^f-eksctl-pi] `eksctl create podidentityassociation -f config.yaml`로 cluster 생성 후에도 동일 파일로 reconcile 가능하다.[^f-eksctl-pi]
+
+```yaml
+apiVersion: eksctl.io/v1alpha5
+kind: ClusterConfig
+metadata:
+  name: cluster-blue
+  region: ap-northeast-2
+
+addons:
+- name: eks-pod-identity-agent
+
+iam:
+  podIdentityAssociations:
+  - namespace: team-A
+    serviceAccountName: service-A
+    roleARN: arn:aws:iam::123456789012:role/role-app-name
+  - namespace: team-A
+    serviceAccountName: service-B
+    permissionPolicyARNs:
+    - arn:aws:iam::aws:policy/AmazonS3ReadOnlyAccess
+```
+
+### F.2 — Terraform `aws_eks_pod_identity_association`
+
+Terraform AWS provider는 v5.29.0부터 `aws_eks_pod_identity_association` 리소스를 제공한다.[^f-tf-pi-issue] 필수 인자는 `cluster_name`, `namespace`, `service_account`, `role_arn`이며, 옵션으로 `disable_session_tags`, `target_role_arn`, `tags`가 있다.[^f-tf-pi] export 속성으로 `association_arn`, `association_id`, `external_id`(target role chaining 시 trust policy condition에 사용)을 제공한다.[^f-tf-pi] `cluster_name`/`namespace`/`service_account`는 변경 시 replacement가 필요하므로 SA 이름 변경은 신중히 다룬다 (이 동작은 동일 키를 갖는 CloudFormation resource와 일치).[^f-cfn-pi]
+
+```hcl
+terraform {
+  required_providers {
+    aws = { source = "hashicorp/aws", version = ">= 5.29.0" }
+  }
+}
+
+resource "aws_eks_pod_identity_association" "service_a" {
+  cluster_name    = "cluster-blue"
+  namespace       = "team-A"
+  service_account = "service-A"
+  role_arn        = "arn:aws:iam::123456789012:role/role-app-name"
+
+  tags = {
+    ManagedBy = "terraform"
+    Team      = "team-A"
+  }
+}
+```
+
+### F.3 — AWS Controllers for Kubernetes (ACK)
+
+ACK `eks-controller`는 GA 상태이며 `PodIdentityAssociation`을 정식 CRD로 지원한다 (community 문서 기준 RELEASED / GENERAL AVAILABILITY, 1.13.0).[^f-ack-eks-status] CRD는 `eks.services.k8s.aws/v1alpha1` 그룹에 속하며 spec 필드는 EKS API와 1:1 매핑된다 (`clusterName`, `namespace`, `serviceAccount`, `roleARN`, `targetRoleARN`, `policy`, `disableSessionTags`, `tags`).[^f-ack-eks-pi] `clusterRef`/`roleRef`로 ACK가 관리하는 다른 CR(예: `Cluster`, IAM controller의 `Role`)을 참조하면 ARN을 하드코딩하지 않아도 된다.[^f-ack-eks-pi] GitOps 관점에서는 association 자체를 K8s 리소스로 다룰 수 있다는 게 가장 큰 장점이다 (F.7 참조).
+
+```yaml
+apiVersion: eks.services.k8s.aws/v1alpha1
+kind: PodIdentityAssociation
+metadata:
+  name: service-a-association
+  namespace: ack-system
+spec:
+  clusterName: cluster-blue
+  namespace: team-A
+  serviceAccount: service-A
+  roleARN: arn:aws:iam::123456789012:role/role-app-name
+  tags:
+    ManagedBy: ack
+```
+
+### F.4 — CloudFormation `AWS::EKS::PodIdentityAssociation`
+
+CloudFormation도 동일한 resource type을 1급으로 제공한다. 필수 속성은 `ClusterName`, `Namespace`, `ServiceAccount`, `RoleArn`이고, 옵션은 `DisableSessionTags`, `Policy`(escaped JSON 인라인 정책), `TargetRoleArn`, `Tags`이다.[^f-cfn-pi] `Fn::GetAtt`로 `AssociationArn`, `AssociationId`, `ExternalId`을 노출한다.[^f-cfn-pi] `ClusterName`/`Namespace`/`ServiceAccount`는 update 시 replacement, 나머지는 no-interruption update이다.[^f-cfn-pi]
+
+```yaml
+Resources:
+  ServiceAAssociation:
+    Type: AWS::EKS::PodIdentityAssociation
+    Properties:
+      ClusterName: cluster-blue
+      Namespace: team-A
+      ServiceAccount: service-A
+      RoleArn: !Sub arn:aws:iam::${AWS::AccountId}:role/role-app-name
+      Tags:
+        - Key: ManagedBy
+          Value: cloudformation
+```
+
+### F.5 — Pulumi
+
+Pulumi의 `aws.eks.PodIdentityAssociation`은 Terraform과 동일한 매핑을 따른다. 필수 인자는 `clusterName`, `namespace`, `serviceAccount`, `roleArn`이고, 옵션은 `disableSessionTags`, `targetRoleArn`, `tags`이다.[^f-pulumi-pi] 출력값으로 `associationArn`, `associationId`, `externalId`이 제공된다.[^f-pulumi-pi]
+
+```python
+import pulumi_aws as aws
+
+aws.eks.PodIdentityAssociation("service-a",
+    cluster_name="cluster-blue",
+    namespace="team-A",
+    service_account="service-A",
+    role_arn="arn:aws:iam::123456789012:role/role-app-name",
+    tags={"ManagedBy": "pulumi"})
+```
+
+### F.6 — Blue/Green 마이그레이션 lifecycle 자동화
+
+Pod Identity의 핵심 장점은 IAM role이 OIDC issuer에 묶이지 않아 동일 role을 여러 클러스터에서 재사용할 수 있다는 점이다.[^f-eksctl-pi][^f-pi-overview] 이 덕에 blue/green 클러스터 마이그레이션은 다음 lifecycle로 단순해진다:
+
+1. **green에 association 추가** — 동일 `(namespace, serviceAccount, roleArn)` 조합을 green 클러스터에 신규 association으로 만든다. 같은 role이 여러 association에서 동시에 사용돼도 무방하다.
+2. **트래픽 점진 전환** — Route53 weighted record / external LB 가중치 / ArgoCD ApplicationSet 등으로 워크로드를 green으로 이동.
+3. **검증 후 blue association 삭제** — green이 안정화되면 blue에서 association만 삭제. role은 그대로 둔다 (green이 계속 사용 중).
+
+도구별 권장 구성:
+
+- **Terraform**: 클러스터별 workspace 또는 module instance 분리 (`cluster_name = "cluster-blue"` vs `"cluster-green"`). 동일 role ARN을 두 workspace의 변수로 주입해 중복 정의 회피. blue 폐기 단계는 `terraform destroy -target=...` 또는 module 제거 + `terraform apply`.
+- **eksctl**: 클러스터당 ClusterConfig 파일 1개 (`cluster-blue.yaml`, `cluster-green.yaml`). `eksctl create/update/delete podidentityassociation -f`가 idempotent하므로 CI에서 동일 명령을 재실행해도 안전.[^f-eksctl-pi]
+- **ACK**: 각 클러스터 안에 자기 자신의 association CR을 두는 패턴이 가장 깔끔 (F.7).
+- **CloudFormation**: 클러스터별 stack 또는 nested stack 분리. drift detection으로 수동 변경 감지.
+
+생성 → 트래픽 전환 → 삭제 단계는 **생성 단계는 ACK/eksctl/Terraform 중 팀 표준**으로, **삭제 단계는 변경 추적이 명확한 IaC(Terraform/CloudFormation)**로 다루는 분리도 실무에서 자주 쓴다 (누가 무엇을 지웠는지 audit이 쉬움). 단, 도구를 섞으면 ownership이 모호해지므로 association 단위 ownership 라벨/태그(`ManagedBy=...`)를 강제하는 것을 권장한다.
+
+### F.7 — GitOps 통합 패턴 (ArgoCD/Flux + ACK)
+
+ACK가 GitOps와 가장 자연스러운 이유는 association이 클러스터 안의 K8s 리소스로 표현되기 때문이다.[^f-ack-eks-pi] ArgoCD/Flux가 다른 워크로드 매니페스트를 동기화하듯 `PodIdentityAssociation` CR도 동일 sync loop에서 reconcile되며, drift는 cluster controller가 아니라 ACK controller가 EKS API로 수정한다.
+
+권장 레포 구조:
+
+```
+gitops/
+├── cluster-blue/
+│   ├── apps/...
+│   └── pod-identity/
+│       ├── team-A-service-A.yaml   # ACK PodIdentityAssociation
+│       └── team-A-service-B.yaml
+└── cluster-green/
+    └── pod-identity/
+        ├── team-A-service-A.yaml
+        └── team-A-service-B.yaml
+```
+
+각 클러스터의 ArgoCD가 자신의 디렉터리만 watch하므로 blue/green 동시 운영 중에도 association 정의가 분리된다. PR 한 번으로 green에 association을 추가하고, 검증 후 두 번째 PR로 blue 디렉터리에서 삭제하는 흐름이 audit·rollback 양쪽에 유리하다. 단, ACK controller 자체의 IRSA(또는 Pod Identity) 권한이 `eks:CreatePodIdentityAssociation`, `eks:DeletePodIdentityAssociation`, `iam:PassRole`을 포함해야 한다 (생성자 IAM principal에 `iam:PassRole` 필요).[^f-pi-userguide]
+
+### F.8 — IRSA → Pod Identity 점진 전환 자동화 (3-step의 도구별 매핑)
+
+Section 5에서 정의한 3-step (① association 생성 → ② SA의 IRSA annotation 제거 → ③ role trust policy 정리)을 도구별로 매핑한다.
+
+| Step | Terraform | eksctl | ACK | CloudFormation |
+|---|---|---|---|---|
+| ① association 생성 | `aws_eks_pod_identity_association` 추가 후 `apply`[^f-tf-pi] | `iam.podIdentityAssociations`에 추가 + `eksctl create podidentityassociation -f`[^f-eksctl-pi] | `PodIdentityAssociation` CR PR merge | `AWS::EKS::PodIdentityAssociation` 추가 후 stack update[^f-cfn-pi] |
+| ② SA annotation 제거 | `kubernetes_service_account`의 `eks.amazonaws.com/role-arn` annotation 제거 + 워크로드 rollout | manifest/Helm chart에서 annotation 제거 | Kustomize/Helm overlay에서 annotation 제거 후 ArgoCD sync | 별도 K8s 매니페스트 변경 (CFN 범위 밖) |
+| ③ trust policy 정리 | `aws_iam_role.assume_role_policy`에서 OIDC federated statement 삭제[^f-pi-userguide] | 외부 IAM 관리 (eksctl 범위 밖) | ACK iam-controller의 `Role` CR로 관리 시 spec 수정 | role을 CFN으로 관리 중이면 `AssumeRolePolicyDocument` 갱신 |
+
+CI/CD로 묶을 때는 단계 사이에 **검증 게이트**를 둔다. ① 후에는 새 Pod에서 `AWS_CONTAINER_CREDENTIALS_FULL_URI` 환경변수가 주입되는지 확인,[^f-pi-overview] ② 후에는 IRSA token 파일 경로 (`AWS_WEB_IDENTITY_TOKEN_FILE`) 의존이 끊겼는지 dry-run, ③ 직전에는 CloudTrail에서 해당 role의 `AssumeRoleWithWebIdentity` 호출이 일정 기간 (예: 7일) 0건임을 확인. 이 흐름을 Argo Workflows / GitHub Actions matrix(클러스터별)로 자동화하면 blue/green 두 클러스터에 대해 동일 procedure를 병렬 적용할 수 있다.
+
+### F 인용
+
+[^f-eksctl-pi]: <https://docs.aws.amazon.com/eks/latest/eksctl/pod-identity-associations.html>
+[^f-tf-pi]: <https://registry.terraform.io/providers/hashicorp/aws/latest/docs/resources/eks_pod_identity_association>
+[^f-tf-pi-issue]: <https://github.com/terraform-aws-modules/terraform-aws-eks/issues/2850>
+[^f-ack-eks-pi]: <https://aws-controllers-k8s.github.io/community/reference/eks/v1alpha1/podidentityassociation/>
+[^f-ack-eks-status]: <https://aws-controllers-k8s.github.io/community/docs/community/services/>
+[^f-cfn-pi]: <https://docs.aws.amazon.com/AWSCloudFormation/latest/UserGuide/aws-resource-eks-podidentityassociation.html>
+[^f-pulumi-pi]: <https://www.pulumi.com/registry/packages/aws/api-docs/eks/podidentityassociation/>
+[^eks-api-create]: <https://docs.aws.amazon.com/eks/latest/APIReference/API_CreatePodIdentityAssociation.html>
+[^f-pi-userguide]: <https://docs.aws.amazon.com/eks/latest/userguide/pod-id-association.html>
+[^f-pi-overview]: <https://docs.aws.amazon.com/eks/latest/userguide/pod-identities.html>

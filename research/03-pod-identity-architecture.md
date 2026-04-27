@@ -144,3 +144,19 @@
 [^epi-eksauth-service]: https://github.com/aws/eks-pod-identity-agent/blob/d4dc0f3fedd795b26ac88755238867a2110c7460/internal/cloud/eksauth/service.go
 [^epi-values]: https://github.com/aws/eks-pod-identity-agent/blob/d4dc0f3fedd795b26ac88755238867a2110c7460/charts/eks-pod-identity-agent/values.yaml
 
+### Service Quotas (보충)
+- Pod Identity association 한도(5,000개/클러스터)는 Service Quotas 콘솔에서 증액 신청 불가 항목이다: "Adjustments to the following components are not supported in Service Quotas: Pod Identity associations per cluster."[^eks-svc-quotas] — 증액이 필요하면 AWS Support 케이스를 별도로 여는 경로만 존재 (공식 문서 명시 없음, 확인 필요).
+- 실무 회피책: 공용 Role + ABAC로 association 수 자체를 줄이거나, 클러스터를 도메인/tenant 단위로 분할해 association을 분산한다.
+
+### Target Role & Credential 캐시 (보충)
+- `targetRoleArn` 사용 시 credential 캐시 TTL이 달라진다: target role 없을 때 최대 6시간, **target role 있을 때 59분**.[^pi-target-role] — session duration이 짧아지므로 SDK가 더 자주 agent에 갱신 요청을 보낸다.
+- target role association의 `externalId` 출력값을 target role trust policy의 `sts:ExternalId` 조건에 사용해 confused-deputy 공격을 방지한다.[^pi-target-role]
+
+### ABAC 최소 안전 태그 조합 (보충)
+- EKS Best Practices 가이드는 ABAC 조건의 최소 안전 조합으로 **`eks-cluster-arn` + `kubernetes-namespace` + `kubernetes-service-account` 세 태그를 동시에 검사**할 것을 권장한다.[^eks-bp-iam] — namespace나 SA 이름은 클러스터 간/계정 간 동일 이름이 존재할 수 있어 단독 사용 시 우회 가능하기 때문이다. `kubernetes-pod-name`/`kubernetes-pod-uid`는 Pod 단위 고유값이라 IAM 정책 조건에 부적합(rolling 재배포 시 매번 변경).
+- 6개 session tag 모두 transitive: cross-account role chaining 후에도 target 계정 리소스 정책의 `aws:PrincipalTag/<key>` 조건으로 평가 가능하다.[^pi-abac]
+
+[^eks-svc-quotas]: https://docs.aws.amazon.com/eks/latest/userguide/service-quotas.html
+[^pi-target-role]: https://docs.aws.amazon.com/eks/latest/userguide/pod-id-assign-target-role.html
+[^eks-bp-iam]: https://docs.aws.amazon.com/eks/latest/best-practices/identity-and-access-management.html
+
