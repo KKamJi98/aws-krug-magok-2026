@@ -101,6 +101,14 @@
 - Quota 증액은 IAM Service Quotas 콘솔에서 "Role trust policy length" 항목으로 요청 가능.[^iam-quotas] 단 증액해도 8192자가 hard limit — 멀티클러스터 8개를 넘는 footprint에서는 결국 Role 분리(=Scenario A) 또는 Pod Identity 전환이 강제된다.[^pi-launch-blog]
 - Pod Identity는 trust policy에 **단일 statement** (`Principal.Service: pods.eks.amazonaws.com`)만 들어가므로 cluster 수가 늘어나도 trust policy 길이가 증가하지 않는다. ABAC condition (`aws:PrincipalTag/eks-cluster-arn` 등)은 permission policy 또는 resource policy 쪽에 작성된다.[^bp-pod-id-eks-bp][^bp-pod-id-abac]
 
+## Demo Evidence — 실측 에러 코드 (2026-04-28, commit e2ba454)
+
+- **실제 에러 코드**: `LimitExceeded: Cannot exceed quota for ACLSizePerRole: 2048` — `aws iam update-assume-role-policy` 호출(5번째 trust entry 추가 시), IAM 콘솔 저장, Terraform `aws_iam_role` apply 세 경로 모두 동일한 에러 코드·메시지로 실패.[^trust-limit-demo]
+- Terraform의 경우 HTTP 409(StatusCode)로 반환되며 에러 메시지: `Error: updating IAM Role (...) assume role policy: operation error IAM: UpdateAssumeRolePolicy, ... LimitExceeded: Cannot exceed quota for ACLSizePerRole: 2048`.[^trust-limit-demo]
+- Inferred: IAM이 compact JSON 기준이 아닌 normalize(whitespace/key ordering 제거) 후 길이로 측정함. 4-entry compact JSON 2114자(>2048)는 OK, 5-entry 2633자에서 실패 — IAM 내부 normalize 후 카운트임을 시사. (AWS 공식 문서에 명시 없음.)
+
+[^trust-limit-demo]: presentation/assets/demos/trust-limit/errors/n-05.err, tf-N5.log (commit e2ba454, 개인 AWS 계정 ap-northeast-2 실측)
+
 [^pi-launch-blog]: https://aws.amazon.com/blogs/containers/amazon-eks-pod-identity-a-new-way-for-applications-on-eks-to-obtain-iam-credentials/
 [^bp-blue-green]: https://docs.aws.amazon.com/eks/latest/best-practices/identity-and-access-management.html
 [^bp-one-role]: https://docs.aws.amazon.com/eks/latest/best-practices/identity-and-access-management.html
