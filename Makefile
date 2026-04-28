@@ -9,7 +9,7 @@ SLIDES := presentation/slides.md
 PDF := presentation/slides.pdf
 HTML := presentation/slides.html
 PPTX := presentation/slides.pptx
-PPTX_IMAGE_SCALE ?= 2
+PPTX_IMAGE_SCALE ?= 4
 DIAGRAM_DIR := presentation/assets/diagrams
 DIAGRAM_HTML := $(wildcard $(DIAGRAM_DIR)/*.html)
 DIAGRAM_WEBP := $(DIAGRAM_HTML:.html=.webp)
