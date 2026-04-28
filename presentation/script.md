@@ -505,7 +505,7 @@ HTTP proxy를 강제하는 환경에서는 agent의 link-local 주소를 우회 
 2. **IRSA 멀티클러스터 한계는 정량적**: trust policy 2,048자(증액 시 8,192자) → 한 Role에 trust 관계 ~4개(증액 시 ~8개)가 사실상 상한.
 3. **Blue/green 클러스터 교체에서 trust 갱신 누락은 CloudTrail로 추적 어려움** — `InvalidIdentityToken`은 client-side로 분류돼 로깅 누락 가능.
 4. **Pod Identity는 trust policy를 단일 service principal로 고정** + **STS quota 미사용** + **자동 session tag 6종으로 ABAC**.
-5. **마이그레이션은 chain precedence 덕분에 안전** — association 먼저, annotation 나중.
+5. **마이그레이션은 chain precedence 덕분에 안전** — association 먼저 추가, annotation 제거는 마지막.
 
 ### 6.2 결합점이 바뀌면 운영 토폴로지가 바뀐다 (Slide 30)
 

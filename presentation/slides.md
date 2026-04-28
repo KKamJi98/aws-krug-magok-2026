@@ -473,7 +473,7 @@ Body: { "token": "<projected SA JWT>" }
 - **IRSA 멀티클러스터 한계는 정량적**: trust policy 2048자(증액 시 8192자) → 한 Role에 trust 관계 ~4개(증액 ~8개)가 사실상 상한
 - **Blue/green 클러스터 교체에서 trust 갱신 누락은 CloudTrail로 추적 어려움** — `InvalidIdentityToken`은 client-side로 분류돼 로깅 누락 가능
 - **Pod Identity는 trust policy를 단일 service principal로 고정** + **STS quota 미사용** + **자동 session tag 6종으로 ABAC**
-- **마이그레이션은 chain precedence 덕분에 안전** — association 먼저, annotation 나중
+- **마이그레이션은 chain precedence 덕분에 안전** — association 먼저 추가, annotation 제거는 마지막
 
 <small class="refs">출처 · <a href="https://docs.aws.amazon.com/IAM/latest/UserGuide/cloudtrail-integration.html">docs.aws.amazon.com/IAM/.../cloudtrail-integration.html</a> · <a href="https://docs.aws.amazon.com/IAM/latest/UserGuide/reference_iam-quotas.html">docs.aws.amazon.com/IAM/.../reference_iam-quotas.html</a> · <a href="https://aws.amazon.com/blogs/containers/amazon-eks-pod-identity-a-new-way-for-applications-on-eks-to-obtain-iam-credentials/">aws.amazon.com/blogs/.../pod-identity</a></small>
 

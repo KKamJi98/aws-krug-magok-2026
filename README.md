@@ -28,7 +28,7 @@ AWS Korea User Group 마곡 DevOps 소모임 (2026-04-28) 발표 자료입니다
 | 5 | 멀티클러스터 IRSA 운영 함정 | 13–16 | trust policy 길이 한도, blue/green 갱신 누락, CloudTrail 사각지대 |
 | 6 | Pod Identity로 어떻게 해소되는가 | 17–20 | trust 한 줄 + ABAC session tag 6종 |
 | 7 | Pod Identity 동작 상세 | 21–25 | Agent → EKS Auth API `AssumeRoleForPodIdentity` → STS는 EKS service가 호출 |
-| 8 | 전환 시 운영 편의성 | 26–28 | chain precedence가 안전망 — association 먼저, annotation 나중 |
+| 8 | 전환 시 운영 편의성 | 26–28 | chain precedence가 안전망 — association 먼저 추가, annotation 제거는 마지막 |
 | 9–10 | 정리 + Q&A | 29–31 | "결합점이 per-cluster에서 per-service로" |
 
 ## 자료 구조

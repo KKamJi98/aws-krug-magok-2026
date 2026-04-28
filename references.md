@@ -44,6 +44,8 @@
 - [Pod Identity associations — eksctl](https://docs.aws.amazon.com/eks/latest/eksctl/pod-identity-associations.html) — eksctl ClusterConfig `iam.podIdentityAssociations` 필드 스키마; `eksctl utils migrate-to-pod-identity`; add-on auto-apply
 - [AWS::EKS::PodIdentityAssociation — CloudFormation](https://docs.aws.amazon.com/AWSCloudFormation/latest/UserGuide/aws-resource-eks-podidentityassociation.html) — CloudFormation resource type 필수 속성(ClusterName/Namespace/ServiceAccount/RoleArn), update behavior(replacement vs no-interruption), 출력 속성(AssociationArn/AssociationId/ExternalId)
 - [Deploy private clusters with limited internet access](https://docs.aws.amazon.com/eks/latest/userguide/private-clusters.html) — Pod Identity는 "no outbound internet access"일 때만 eks-auth VPC endpoint 필요; NAT gateway 있으면 PrivateLink 불필요
+- [Analyze AWS CloudTrail log file entries (EKS)](https://docs.aws.amazon.com/eks/latest/userguide/understanding-service-name-entries.html) — EKS 관련 CloudTrail 로그 형식·userIdentity 예시 (CreateCluster 포함)
+- [Amazon EKS Auth — supported actions](https://docs.aws.amazon.com/eks/latest/APIReference/API_Operations_Amazon_EKS_Auth.html) — EKS Auth API 지원 액션 목록 (AssumeRoleForPodIdentity 등)
 
 ## AWS SDK
 
