@@ -486,11 +486,11 @@ Body: { "token": "<projected SA JWT>" }
 - IRSA의 운영 부담은 "OIDC trust 관리"라는 **per-cluster 결합**에서 생긴다
 - Pod Identity는 trust 결합을 **per-service(`pods.eks.amazonaws.com`)** 로 옮겨 — 클러스터 수가 늘어도 trust policy는 변하지 않는다
 - 결합점이 바뀌면 **운영 토폴로지 자체가 단순해진다** — blue/green·failover·신규 클러스터 추가에서 IAM 작업이 사라진다
-- 이것이 30분 발표의 한 줄 결론
+- 결과: IAM Role 수 **(서비스 × 클러스터) → (서비스) 1:1** 로 축소 — **Roles/account 1,000 · OIDC providers 100 · trust policy 2,048자** 한도 부담이 동시에 해소된다
 
-<small class="refs">출처 · <a href="https://aws.amazon.com/blogs/containers/amazon-eks-pod-identity-a-new-way-for-applications-on-eks-to-obtain-iam-credentials/">aws.amazon.com/blogs/.../pod-identity</a> · <a href="https://docs.aws.amazon.com/eks/latest/best-practices/identity-and-access-management.html">docs.aws.amazon.com/eks/.../identity-and-access-management.html</a></small>
+<small class="refs">출처 · <a href="https://aws.amazon.com/blogs/containers/amazon-eks-pod-identity-a-new-way-for-applications-on-eks-to-obtain-iam-credentials/">aws.amazon.com/blogs/.../pod-identity</a> · <a href="https://docs.aws.amazon.com/IAM/latest/UserGuide/reference_iam-quotas.html">docs.aws.amazon.com/IAM/.../reference_iam-quotas.html</a> · <a href="https://docs.aws.amazon.com/eks/latest/best-practices/identity-and-access-management.html">docs.aws.amazon.com/eks/.../identity-and-access-management.html</a></small>
 
-<!-- 발표 멘트: 결합점이 바뀌었다, 이 한 문장으로 마무리하겠습니다. 다음 슬라이드에서 Q&A 받겠습니다. -->
+<!-- 발표 멘트: 결합점이 바뀌면 IAM 운영의 정량적 한도 세 가지(Role 수, OIDC provider 수, trust policy 길이)가 동시에 풀립니다. 이 숫자들을 마지막으로 들고 Q&A로 넘어가겠습니다. -->
 
 ---
 

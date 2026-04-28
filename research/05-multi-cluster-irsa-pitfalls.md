@@ -95,7 +95,7 @@
 - AWS EMR on EKS 공식 docs는 같은 quota를 다른 entry 길이로 환산해 명시: "eliminating the constraint of a single Job Execution IAM Role being shared across a **maximum of twelve EKS clusters due to the 4096 character limit on IAM trust policy length**."[^emr-eks-pod-id] — entry가 condition 없는 짧은 형태(~340자)일 때 도달 가능한 상한. Pod Identity launch blog의 4/8 추정과 entry 길이 가정이 다를 뿐 같은 quota를 인용한다.
 - EKS Best Practices Known Limits 문서가 IRSA 운영 관점에서 IAM 쿼터를 명시적으로 나열한다:[^eks-known-limits]
   - "IAM | Role trust policy length | Can limit the number of clusters an IAM role is associated with for IRSA | L-C07B4B0D | default 2,048"
-  - "IAM | Roles per account | Can limit the number of clusters or IRSA roles in an account. | L-FE177D64 | default 1,000"
+  - "IAM | Roles per account | Can limit the number of clusters or IRSA roles in an account. | L-FE177D64 | default 1,000" — Service Quotas 콘솔에서 자동 승인 증액 가능, **최대 10,000개**.[^iam-quotas]
   - "IAM | OpenId connect providers per account | Can limit the number of Clusters per account, OpenID Connect is used by IRSA | L-858F3967 | default 100"
 - 5번째/6번째 클러스터 OIDC trust 추가 시 IAM update 시점의 에러 (AWS는 정확한 message 텍스트를 EKS 문서에 게시하지 않으나, 일반 IAM policy update 시 길이 초과는 `MalformedPolicyDocument` 또는 `LimitExceededException`으로 반환됨 — 정확한 문자열은 IAM 콘솔/SDK 환경에 따라 다름. 발표에서는 "trust policy size limit hit" 정도로만 표현하고 정확한 문자열은 데모 캡처로 보여주는 게 안전함).
 - Quota 증액은 IAM Service Quotas 콘솔에서 "Role trust policy length" 항목으로 요청 가능.[^iam-quotas] 단 증액해도 8192자가 hard limit — 멀티클러스터 8개를 넘는 footprint에서는 결국 Role 분리(=Scenario A) 또는 Pod Identity 전환이 강제된다.[^pi-launch-blog]

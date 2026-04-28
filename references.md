@@ -43,6 +43,7 @@
 - [Tagging AWS STS session tags](https://docs.aws.amazon.com/IAM/latest/UserGuide/id_session-tags.html) — session tag transitive 전달 동작; Pod Identity 6개 tag가 cross-account AssumeRole chaining 후에도 PrincipalTag로 평가 가능한 근거
 - [Pod Identity associations — eksctl](https://docs.aws.amazon.com/eks/latest/eksctl/pod-identity-associations.html) — eksctl ClusterConfig `iam.podIdentityAssociations` 필드 스키마; `eksctl utils migrate-to-pod-identity`; add-on auto-apply
 - [AWS::EKS::PodIdentityAssociation — CloudFormation](https://docs.aws.amazon.com/AWSCloudFormation/latest/UserGuide/aws-resource-eks-podidentityassociation.html) — CloudFormation resource type 필수 속성(ClusterName/Namespace/ServiceAccount/RoleArn), update behavior(replacement vs no-interruption), 출력 속성(AssociationArn/AssociationId/ExternalId)
+- [Deploy private clusters with limited internet access](https://docs.aws.amazon.com/eks/latest/userguide/private-clusters.html) — Pod Identity는 "no outbound internet access"일 때만 eks-auth VPC endpoint 필요; NAT gateway 있으면 PrivateLink 불필요
 
 ## AWS SDK
 

@@ -19,7 +19,7 @@
 - Pod Identity Agent를 사용하려면 노드 IAM Role이 `eks-auth:AssumeRoleForPodIdentity` 액션을 호출할 수 있어야 한다. AWS managed policy `AmazonEKSWorkerNodePolicy`로 충족하거나 동등한 inline policy를 부여한다.[^pi-agent-setup]
 - 권장 inline policy 예시 (`Resource: "*"`)는 AWS 공식 가이드에 그대로 게시되어 있고, 태그 조건으로 어떤 Role을 Pod가 assume할 수 있는지 제한 가능하다고 명시한다.[^pi-agent-setup]
 - Agent는 노드에서 `hostNetwork`로 실행되며 link-local 주소 `169.254.170.23`(IPv4) / `[fd00:ec2::23]`(IPv6) 의 포트 `80`/`2703`를 사용한다.[^pi-overview]
-- Agent 컨테이너 이미지는 EKS add-on 표준 ECR 레지스트리에서 pull되며, private subnet 노드는 EKS Auth API용 PrivateLink interface endpoint(`com.amazonaws.<region>.eks-auth`)가 있어야 통신 가능.[^pi-agent-setup][^vpc-endpoints]
+- Agent 컨테이너 이미지는 EKS add-on 표준 ECR 레지스트리에서 pull되며, **outbound internet이 없는** private subnet 노드는 EKS Auth API용 PrivateLink interface endpoint(`com.amazonaws.<region>.eks-auth`)가 있어야 통신 가능. NAT gateway 등으로 outbound internet 이 가능하면 PrivateLink 없이도 동작한다.[^pi-agent-setup][^vpc-endpoints][^private-clusters]
 - EKS Auto Mode 클러스터는 Pod Identity Agent가 사전 설치돼 있어 별도 설치가 불필요하다.[^pi-agent-setup][^eks-addons]
 
 ### Failure modes & credential caching
@@ -63,7 +63,7 @@
 - Cross-account 시나리오는 두 가지로 가능:
   1. Application 코드/SDK가 일반 IAM role chaining(`sts:AssumeRole`)을 수행하고, Pod Identity가 첨부한 transitive session tags(`eks-cluster-name`, `kubernetes-namespace` 등)를 cross-account role의 trust/permission 정책 조건에 사용.[^pi-abac]
   2. `CreatePodIdentityAssociation`의 `targetRoleArn` 파라미터를 사용 — EKS가 두 단계 role assumption을 자동 수행한다(association role → target role). 다른 계정 role도 가능하며 `externalId`로 confused-deputy 방지.[^create-pi-assoc][^pi-assoc-data]
-- Private cluster: 노드는 EKS Auth API에 도달해야 하므로 private subnet의 경우 `com.amazonaws.<region>.eks-auth` PrivateLink interface endpoint를 만들어야 한다.[^pi-agent-setup][^vpc-endpoints]
+- Private cluster: 노드는 EKS Auth API에 도달해야 한다. **outbound internet 이 없는 private subnet** 의 경우 `com.amazonaws.<region>.eks-auth` PrivateLink interface endpoint 가 필수다.[^pi-agent-setup][^vpc-endpoints][^private-clusters] private subnet 이라도 NAT 등으로 outbound internet 이 있으면 PrivateLink 없이 공용 `eks-auth.<region>.api.aws` endpoint 로 통신 가능.
 - `eks-auth` PrivateLink는 `ap-southeast-5`(Malaysia)에서도 사용 가능하다고 명시(EKS API 자체는 일부 신규 region에서 PrivateLink 미지원이지만 eks-auth는 별도).[^vpc-endpoints]
 - Proxy 환경에서는 `169.254.170.23`과 `[fd00:ec2::23]`을 `no_proxy`/`NO_PROXY`에 추가해야 agent로의 요청이 프록시로 잘못 라우팅되지 않는다.[^pi-overview]
 
@@ -159,4 +159,10 @@
 [^eks-svc-quotas]: https://docs.aws.amazon.com/eks/latest/userguide/service-quotas.html
 [^pi-target-role]: https://docs.aws.amazon.com/eks/latest/userguide/pod-id-assign-target-role.html
 [^eks-bp-iam]: https://docs.aws.amazon.com/eks/latest/best-practices/identity-and-access-management.html
+
+### Private subnet + NAT vs. PrivateLink (보충)
+- `pod-id-agent-setup.html` 표현("private subnet의 경우 PrivateLink 필요")은 misleading할 수 있다. `private-clusters.html`의 Pod Identity 요건은 정확히 **"If there is no outbound internet access"** 조건이다.[^private-clusters] — private subnet이라도 **NAT gateway(또는 NAT instance)로 outbound internet이 가능하면 `com.amazonaws.<region>.eks-auth` PrivateLink endpoint 없이도 Pod Identity가 정상 동작한다.**
+- PrivateLink(`com.amazonaws.<region>.eks-auth`)는 완전 격리 환경(outbound internet 없는 private subnet, air-gapped 구성)에서만 필수다.[^private-clusters]
+
+[^private-clusters]: https://docs.aws.amazon.com/eks/latest/userguide/private-clusters.html
 
