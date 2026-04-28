@@ -1,4 +1,4 @@
-.PHONY: help install diagrams slides pdf html watch clean check \
+.PHONY: help install diagrams slides pdf html pptx watch clean check \
         demo-trust-preflight demo-trust-provision demo-trust-run \
         demo-trust-all demo-trust-cleanup demo-trust-status demo-trust-show \
         demo-trust-tf-init demo-trust-tf-plan demo-trust-tf-apply \
@@ -8,6 +8,8 @@ ROOT := $(shell pwd)
 SLIDES := presentation/slides.md
 PDF := presentation/slides.pdf
 HTML := presentation/slides.html
+PPTX := presentation/slides.pptx
+PPTX_IMAGE_SCALE ?= 2
 DIAGRAM_DIR := presentation/assets/diagrams
 DIAGRAM_HTML := $(wildcard $(DIAGRAM_DIR)/*.html)
 DIAGRAM_WEBP := $(DIAGRAM_HTML:.html=.webp)
@@ -29,6 +31,7 @@ help:
 	@echo "  slides               - PDF 빌드 (diagrams 의존)"
 	@echo "  pdf                  - slides의 alias"
 	@echo "  html                 - HTML로 슬라이드 빌드"
+	@echo "  pptx                 - PPTX(이미지 기반)로 빌드 (Keynote/PowerPoint 백업용)"
 	@echo "  watch                - Marp 라이브 미리보기"
 	@echo "  clean                - 빌드 산출물 제거"
 	@echo "  check                - 도구 가용성 확인"
@@ -78,11 +81,16 @@ $(PDF): $(SLIDES) $(DIAGRAM_WEBP) presentation/theme.css
 html: diagrams
 	@npx @marp-team/marp-cli $(SLIDES) -o $(HTML) --allow-local-files --theme presentation/theme.css
 
+pptx: diagrams $(PPTX)
+
+$(PPTX): $(SLIDES) $(DIAGRAM_WEBP) presentation/theme.css
+	@npx @marp-team/marp-cli $(SLIDES) -o $(PPTX) --pptx --allow-local-files --theme presentation/theme.css --image-scale $(PPTX_IMAGE_SCALE)
+
 watch:
 	@npx @marp-team/marp-cli -s presentation --allow-local-files --theme presentation/theme.css
 
 clean:
-	rm -f $(DIAGRAM_DIR)/*.webp $(DIAGRAM_DIR)/*.png $(PDF) $(HTML)
+	rm -f $(DIAGRAM_DIR)/*.webp $(DIAGRAM_DIR)/*.png $(PDF) $(HTML) $(PPTX)
 
 # ---- IRSA trust-policy size-limit demo ----
 
